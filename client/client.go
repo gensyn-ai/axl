@@ -323,14 +323,15 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req SendRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	// Get destination key from header (raw binary, no JSON/base64)
+	destKeyHex := r.Header.Get("X-Destination-Key")
+	if destKeyHex == "" {
+		http.Error(w, "Missing X-Destination-Key header", http.StatusBadRequest)
 		return
 	}
 
 	// Decode destination public key
-	destKeyBytes, err := hex.DecodeString(req.DestinationKey)
+	destKeyBytes, err := hex.DecodeString(destKeyHex)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Invalid destination key: %v", err), http.StatusBadRequest)
 		return
@@ -344,6 +345,13 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 	var keyArr [32]byte
 	copy(keyArr[:], destKeyBytes)
 	destAddr := address.AddrForKey(keyArr[:])
+
+	// Read raw binary body directly (no JSON/base64 decoding)
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read body: %v", err), http.StatusBadRequest)
+		return
+	}
 
 	// Dial via gVisor
 	destIP := tcpip.AddrFromSlice(destAddr[:])
@@ -362,7 +370,7 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 
 	// Write Length Prefix
 	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(req.Data)))
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 
 	if _, err := conn.Write(lenBuf); err != nil {
 		http.Error(w, fmt.Sprintf("Write length failed: %v", err), http.StatusInternalServerError)
@@ -370,16 +378,15 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write Data
-	if _, err := conn.Write(req.Data); err != nil {
+	if _, err := conn.Write(data); err != nil {
 		http.Error(w, fmt.Sprintf("Write data failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"sent_bytes": len(req.Data),
-		"success":    true,
-	})
+	// Return minimal response
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-Sent-Bytes", fmt.Sprintf("%d", len(data)))
+	w.WriteHeader(http.StatusOK)
 }
 
 func handleRecv(w http.ResponseWriter, r *http.Request) {
@@ -395,8 +402,10 @@ func handleRecv(w http.ResponseWriter, r *http.Request) {
 	msg := recvQueue[0]
 	recvQueue = recvQueue[1:]
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(msg)
+	// Return raw binary with sender key in header (no JSON/base64)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-From-Key", msg.FromKey)
+	w.Write(msg.Data)
 }
 
 func handleTopology(w http.ResponseWriter, r *http.Request) {

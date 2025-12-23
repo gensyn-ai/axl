@@ -1,5 +1,4 @@
 import time
-import base64
 import requests
 import torch
 import msgpack
@@ -29,12 +28,16 @@ def get_topology():
 def recv_msg_via_bridge():
     """
     Poll for received messages from the Go bridge.
-    Returns dict with: from_key, data (base64)
+    Returns dict with: from_key, data (raw bytes)
     """
     try:
         resp = requests.get(f"{BRIDGE_URL}/recv")
         if resp.status_code == 200:
-            return resp.json()
+            # Raw binary response with sender key in header
+            return {
+                'from_key': resp.headers.get('X-From-Key', ''),
+                'data': resp.content  # Raw bytes
+            }
         elif resp.status_code == 204:
             return None  # No messages
     except Exception as e:
@@ -45,19 +48,18 @@ def recv_msg_via_bridge():
 def send_msg_via_bridge(dest_key, data):
     """
     Send data to a destination identified by public key (hex string).
-    Data is raw bytes, will be base64 encoded for JSON transport.
+    Data is raw bytes, sent directly without base64 encoding.
     """
-    b64_data = base64.b64encode(data).decode('utf-8')
-    
-    payload = {
-        "destination_key": dest_key,
-        "data": b64_data
+    headers = {
+        'X-Destination-Key': dest_key,
+        'Content-Type': 'application/octet-stream'
     }
     
     try:
-        resp = requests.post(f"{BRIDGE_URL}/send", json=payload)
+        resp = requests.post(f"{BRIDGE_URL}/send", data=data, headers=headers)
         if resp.status_code == 200:
-            return resp.json()
+            sent_bytes = resp.headers.get('X-Sent-Bytes', '0')
+            return {'sent_bytes': int(sent_bytes), 'success': True}
         else:
             print(f"Send error: {resp.status_code} - {resp.text}")
             return None
@@ -143,7 +145,7 @@ def run_test(target_key=None):
                 msg = recv_msg_via_bridge()
                 if msg:
                     print(f"Received message from {msg.get('from_key', 'unknown')[:16]}...")
-                    print(f"Data: {base64.b64decode(msg['data']) if msg.get('data') else 'empty'}")
+                    print(f"Data: {msg['data'] if msg.get('data') else 'empty'}")
                     break
                 time.sleep(1)
             return
@@ -289,7 +291,7 @@ def run_bandwidth_test(target_key=None):
         while time.time() - ack_start < 2400: # 40min timeout
             resp = recv_msg_via_bridge()
             if resp:
-                data = base64.b64decode(resp['data'])
+                data = resp['data']  # Already raw bytes
                 try:
                     decoded = msgpack.unpackb(data, raw=False)
                     if decoded.get('type') == 'bandwidth_ack':
@@ -343,7 +345,7 @@ def run_receiver():
             msg = recv_msg_via_bridge()
             if msg:
                 print(f"\n[RECV] From: {msg.get('from_key', 'unknown')[:32]}...")
-                data = base64.b64decode(msg['data']) if msg.get('data') else b''
+                data = msg['data'] if msg.get('data') else b''
                 try:
                     decoded = msgpack.unpackb(data, raw=False)
                     msg_type = decoded.get('type', 'unknown')
