@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -34,6 +35,10 @@ var (
 	netStack  *stack.Stack
 	recvMutex sync.Mutex
 	recvQueue []ReceivedMessage
+
+	// MCP Router URL - all MCP requests are forwarded here (set via flag)
+	routerURL  string
+	httpClient = &http.Client{Timeout: 30 * time.Second}
 )
 
 // ReceivedMessage holds incoming data with sender info
@@ -72,13 +77,31 @@ type TreeInfo struct {
 	Sequence  uint64 `json:"sequence"`
 }
 
+// MCPMessage wraps an MCP request with routing info
+type MCPMessage struct {
+	Service string          `json:"service"` // Target MCP service name (e.g., "weather")
+	Request json.RawMessage `json:"request"` // The JSON-RPC request to forward
+}
+
+// MCPResponse wraps an MCP response
+type MCPResponse struct {
+	Service  string          `json:"service"`
+	Response json.RawMessage `json:"response"`
+	Error    string          `json:"error,omitempty"`
+}
+
 const TCPPort = 7000
 
 func main() {
 	// Command-line flags
 	listenAddr := flag.String("listen", "", "Listen address for incoming peers (e.g., tls://0.0.0.0:9001). If set, runs as a server.")
 	peerAddr := flag.String("peer", "", "Peer address to connect to (e.g., tls://1.2.3.4:9001). If not set and not listening, uses default public peer.")
+	routerAddr := flag.String("router", "http://127.0.0.1:9003", "MCP router URL for forwarding tool requests")
 	flag.Parse()
+
+	// Set router URL
+	routerURL = *routerAddr + "/route"
+	fmt.Printf("MCP Router: %s\n", routerURL)
 
 	// 1. Generate config
 	cfg := config.GenerateConfig()
@@ -265,8 +288,93 @@ func startTCPListener() {
 	}
 }
 
+// RouterRequest is sent to the MCP router
+type RouterRequest struct {
+	Service string          `json:"service"`
+	Request json.RawMessage `json:"request"`
+	FromKey string          `json:"from_key"`
+}
+
+// RouterResponse is returned by the MCP router
+type RouterResponse struct {
+	Response json.RawMessage `json:"response"`
+	Error    string          `json:"error"`
+}
+
+// forwardToRouter forwards an MCP request to the router service
+func forwardToRouter(service string, request json.RawMessage, fromKey string) (json.RawMessage, error) {
+	// Build router request
+	routerReq := RouterRequest{
+		Service: service,
+		Request: request,
+		FromKey: fromKey,
+	}
+
+	reqBody, err := json.Marshal(routerReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Send to router
+	resp, err := httpClient.Post(routerURL, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to contact router: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read router response: %w", err)
+	}
+
+	// Parse router response
+	var routerResp RouterResponse
+	if err := json.Unmarshal(respBody, &routerResp); err != nil {
+		return nil, fmt.Errorf("failed to parse router response: %w", err)
+	}
+
+	// Check for router-level error
+	if routerResp.Error != "" {
+		return nil, fmt.Errorf("router error: %s", routerResp.Error)
+	}
+
+	return routerResp.Response, nil
+}
+
+// sendResponse sends a response back to a peer
+func sendResponse(conn net.Conn, data []byte) error {
+	lenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+
+	if _, err := conn.Write(lenBuf); err != nil {
+		return fmt.Errorf("failed to write length: %w", err)
+	}
+	if _, err := conn.Write(data); err != nil {
+		return fmt.Errorf("failed to write data: %w", err)
+	}
+	return nil
+}
+
 func handleTCPConn(conn net.Conn) {
 	defer conn.Close()
+
+	// Identify Sender
+	remoteAddrStr := conn.RemoteAddr().String()
+	host, _, _ := net.SplitHostPort(remoteAddrStr)
+
+	// Convert Host IPv6 -> PublicKey
+	fromKey := ""
+	ip := net.ParseIP(host)
+	if ip != nil {
+		var addrBytes [16]byte
+		copy(addrBytes[:], ip.To16())
+		yggAddr := address.Address(addrBytes)
+		key := yggAddr.GetKey()
+		fromKey = hex.EncodeToString(key)
+	}
+
+	log.Printf("Connection from peer %s...", fromKey[:16])
 
 	// Protocol: Length(4 bytes) + Data
 	for {
@@ -287,22 +395,36 @@ func handleTCPConn(conn net.Conn) {
 			return
 		}
 
-		// Identify Sender
-		// RemoteAddr is [IPv6]:Port
-		remoteAddrStr := conn.RemoteAddr().String()
-		host, _, _ := net.SplitHostPort(remoteAddrStr)
+		// Try to parse as MCP message
+		var mcpMsg MCPMessage
+		if err := json.Unmarshal(dataBuf, &mcpMsg); err == nil && mcpMsg.Service != "" {
+			// This is an MCP request - forward to router
+			log.Printf("Forwarding MCP request to router for service: %s", mcpMsg.Service)
 
-		// Convert Host IPv6 -> PublicKey
-		fromKey := ""
-		ip := net.ParseIP(host)
-		if ip != nil {
-			var addrBytes [16]byte
-			copy(addrBytes[:], ip.To16())
-			yggAddr := address.Address(addrBytes)
-			key := yggAddr.GetKey()
-			fromKey = hex.EncodeToString(key)
+			respData, err := forwardToRouter(mcpMsg.Service, mcpMsg.Request, fromKey)
+
+			var mcpResp MCPResponse
+			mcpResp.Service = mcpMsg.Service
+
+			if err != nil {
+				log.Printf("MCP forward error: %v", err)
+				mcpResp.Error = err.Error()
+			} else if respData != nil {
+				mcpResp.Response = respData
+			} else {
+				// No response needed (notification)
+				continue
+			}
+
+			// Send response back to peer
+			respBytes, _ := json.Marshal(mcpResp)
+			if err := sendResponse(conn, respBytes); err != nil {
+				log.Printf("Failed to send response: %v", err)
+			}
+			continue
 		}
 
+		// Not an MCP message - queue it for /recv (legacy behavior)
 		msg := ReceivedMessage{
 			FromKey: fromKey,
 			Data:    dataBuf,
