@@ -52,8 +52,9 @@ go run client.go [flags]
 |------|-------------|---------|
 | `-peer` | Peer URI to connect to | `-peer tls://1.2.3.4:9001` |
 | `-listen` | Listen address for incoming peers | `-listen tls://0.0.0.0:9001` |
+| `-router` | MCP router URL | `-router http://127.0.0.1:9003` |
 
-If no flags are provided, connects to a default public peer.
+If no flags are provided, connects to a default public peer and routes MCP traffic to `http://127.0.0.1:9003`.
 
 ### Examples
 
@@ -92,18 +93,20 @@ Returns node info and peer/tree state.
 
 ### `POST /send`
 
-Send binary data to another node.
+Send data to another node. If the remote node responds (e.g., an MCP request/response), the response is returned directly. Otherwise falls back to a fire-and-forget acknowledgement.
 
 **Headers:**
 - `X-Destination-Key`: Hex-encoded 32-byte public key of destination
 
-**Body:** Raw binary data
+**Body:** Raw binary data (or JSON for MCP requests)
 
-**Response:** `200 OK` with `X-Sent-Bytes` header
+**Response:**
+- If the remote peer responds: `200 OK` with JSON response body
+- If no response (fire-and-forget): `200 OK` with `X-Sent-Bytes` header
 
 ### `GET /recv`
 
-Poll for received messages.
+Poll for received messages (non-MCP traffic only). MCP messages are automatically routed to the MCP router.
 
 **Response:**
 - `204 No Content` if queue is empty
@@ -120,10 +123,26 @@ When you send data, it:
 1. Converts the destination public key → Yggdrasil IPv6 address
 2. Opens a TCP connection through the gVisor stack
 3. Sends a length-prefixed message
+4. Waits for a response (with 30s timeout) and returns it to the caller
 
 When you receive data:
 1. The TCP listener accepts connections from the overlay
-2. Messages are queued and returned via `/recv`
+2. If the message has a `"service"` field, it is treated as an MCP request and forwarded to the MCP router via `POST /route`
+3. The router's response is sent back to the remote peer over the same TCP connection
+4. Non-MCP messages are queued and returned via `/recv`
+
+### MCP Routing
+
+Incoming messages with a `"service"` field are recognized as MCP requests:
+
+```json
+{
+  "service": "weather",
+  "request": {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {...}}
+}
+```
+
+These are forwarded to the MCP router (default `http://127.0.0.1:9003/route`), which routes them to the appropriate registered MCP server. See [demcp](./client/) for the router and server implementation.
 
 ## Submodules
 
