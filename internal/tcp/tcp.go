@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"example.com/api"
+	"example.com/internal/mcp"
 
 	"github.com/gologme/log"
 	"github.com/yggdrasil-network/yggdrasil-go/src/address"
@@ -182,6 +183,7 @@ func handleTCPConn(conn net.Conn) {
 	log.Printf("Connection from peer %s...", fromKey[:16])
 
 	// Protocol: Length(4 bytes) + Data
+	mcpStream := mcp.NewMCPStream()
 	for {
 		// Read Length
 		lenBuf := make([]byte, 4)
@@ -200,36 +202,27 @@ func handleTCPConn(conn net.Conn) {
 			return
 		}
 
+		// Use stream multiplexing, like HTTP/2
+
 		// // Try to parse as MCP message
-		// var mcpMsg MCPMessage
-		// if err := json.Unmarshal(dataBuf, &mcpMsg); err == nil && mcpMsg.Service != "" {
-		// 	// This is an MCP request - forward to router
-		// 	log.Printf("Forwarding MCP request to router for service: %s", mcpMsg.Service)
+		mcpMsg, ok := mcpStream.IsAllowed(dataBuf)
+		if ok {
+			// This is an MCP request - forward to router
+			mcpMsg.FromKey = fromKey
+			respBytes, err := mcpStream.Forward(mcpMsg)
+			if err != nil {
+				log.Printf("MCP forward error: %v", err)
+				continue
+			}
+			if respBytes != nil {
+				if err := sendResponse(conn, respBytes); err != nil {
+					log.Printf("Failed to send response: %v", err)
+				}
+			}
+			continue
+		}
 
-		// 	respData, err := forwardToRouter(mcpMsg.Service, mcpMsg.Request, fromKey)
-
-		// 	var mcpResp MCPResponse
-		// 	mcpResp.Service = mcpMsg.Service
-
-		// 	if err != nil {
-		// 		log.Printf("MCP forward error: %v", err)
-		// 		mcpResp.Error = err.Error()
-		// 	} else if respData != nil {
-		// 		mcpResp.Response = respData
-		// 	} else {
-		// 		// No response needed (notification)
-		// 		continue
-		// 	}
-
-		// 	// Send response back to peer
-		// 	respBytes, _ := json.Marshal(mcpResp)
-		// 	if err := sendResponse(conn, respBytes); err != nil {
-		// 		log.Printf("Failed to send response: %v", err)
-		// 	}
-		// 	continue
-		// }
-
-		// Not an MCP message - queue it for /recv (legacy behavior)
+		// Not an MCP message - queue it for /recv
 		msg := api.ReceivedMessage{
 			FromKey: fromKey,
 			Data:    dataBuf,
@@ -242,4 +235,18 @@ func handleTCPConn(conn net.Conn) {
 		api.RecvQueue = append(api.RecvQueue, msg)
 		api.RecvMutex.Unlock()
 	}
+}
+
+// sendResponse sends a response back to a peer
+func sendResponse(conn net.Conn, data []byte) error {
+	lenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+
+	if _, err := conn.Write(lenBuf); err != nil {
+		return fmt.Errorf("failed to write length: %w", err)
+	}
+	if _, err := conn.Write(data); err != nil {
+		return fmt.Errorf("failed to write data: %w", err)
+	}
+	return nil
 }
