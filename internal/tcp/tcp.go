@@ -205,11 +205,11 @@ func handleTCPConn(conn net.Conn) {
 		// Use stream multiplexing, like HTTP/2
 
 		// // Try to parse as MCP message
-		mcpMsg, ok := mcpStream.IsAllowed(dataBuf)
-		if ok {
+		var mcpMsg api.MCPMessage
+		if mcpStream.IsAllowed(dataBuf, &mcpMsg) {
 			// This is an MCP request - forward to router
 			mcpMsg.FromKey = fromKey
-			respBytes, err := mcpStream.Forward(mcpMsg)
+			respBytes, err := mcpStream.Forward(&mcpMsg)
 			if err != nil {
 				log.Printf("MCP forward error: %v", err)
 				continue

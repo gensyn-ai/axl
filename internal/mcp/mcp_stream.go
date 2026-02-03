@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -23,12 +22,11 @@ func (m *MCPStream) GetID() string {
 	return m.ID
 }
 
-func (m *MCPStream) IsAllowed(data []byte) (*api.MCPMessage, bool) {
-	var mcpMsg api.MCPMessage
-	if err := json.Unmarshal(data, &mcpMsg); err == nil && mcpMsg.Service != "" {
-		return &mcpMsg, true
+func (m *MCPStream) IsAllowed(data []byte, mcpMsg *api.MCPMessage) bool {
+	if err := json.Unmarshal(data, mcpMsg); err == nil && mcpMsg.Service != "" {
+		return true
 	}
-	return nil, false
+	return false
 }
 
 func (m *MCPStream) Forward(mcpMsg *api.MCPMessage) (respBytes []byte, err error) {
@@ -42,8 +40,8 @@ func (m *MCPStream) Forward(mcpMsg *api.MCPMessage) (respBytes []byte, err error
 		mcpResp.Error = err.Error()
 	} else if respData != nil {
 		mcpResp.Response = respData
-	} else { // If forward succeeds, we require a response
-		return nil, fmt.Errorf("no response data from router, service: %s", mcpMsg.Service)
+	} else { // no response supplied by router
+		return nil, nil
 	}
 
 	respBytes, err = json.Marshal(mcpResp)
