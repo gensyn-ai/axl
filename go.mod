@@ -1,8 +1,6 @@
-module client
+module example.com
 
-go 1.24.1
-
-toolchain go1.24.11
+go 1.25.5
 
 require (
 	github.com/gologme/log v1.3.0
@@ -11,7 +9,7 @@ require (
 )
 
 require (
-	github.com/Arceliar/ironwood v0.0.0-20251124020000-e1358f790504 // indirect
+	github.com/Arceliar/ironwood v0.0.0-20241213013129-743fe2fccbd3 // indirect
 	github.com/Arceliar/phony v0.0.0-20220903101357-530938a4b13d // indirect
 	github.com/bits-and-blooms/bitset v1.13.0 // indirect
 	github.com/bits-and-blooms/bloom/v3 v3.7.0 // indirect
