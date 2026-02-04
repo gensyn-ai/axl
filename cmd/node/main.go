@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"example.com/api"
@@ -24,22 +26,58 @@ var (
 	httpClient = &http.Client{Timeout: 30 * time.Second}
 )
 
-const TCPPort = 7000
+const (
+	defaultTCPPort     = 7000
+	defaultAPIPort     = 9002
+	defaultRouterHost  = "http://127.0.0.1"
+	defaultRouterPort  = 9003
+	defaultConfigPath  = "node-config.json"
+	defaultListenUsage = "Custom listen address (optional)"
+)
+
+type ApiConfig struct {
+	ApiPort    int    `json:"api_port"`
+	RouterAddr string `json:"router_addr"`
+	RouterPort int    `json:"router_port"`
+	TCPPort    int    `json:"tcp_port"`
+}
+
+func defaultAPIConfig() ApiConfig {
+	return ApiConfig{
+		ApiPort:    defaultAPIPort,
+		RouterAddr: defaultRouterHost,
+		RouterPort: defaultRouterPort,
+		TCPPort:    defaultTCPPort,
+	}
+}
+
+type apiConfigOverrides struct {
+	ApiPort    *int    `json:"api_port"`
+	RouterAddr *string `json:"router_addr"`
+	RouterPort *int    `json:"router_port"`
+	TCPPort    *int    `json:"tcp_port"`
+}
+
+func applyOverrides(base *ApiConfig, ov apiConfigOverrides) {
+	if ov.ApiPort != nil {
+		base.ApiPort = *ov.ApiPort
+	}
+	if ov.RouterAddr != nil {
+		base.RouterAddr = *ov.RouterAddr
+	}
+	if ov.RouterPort != nil {
+		base.RouterPort = *ov.RouterPort
+	}
+	if ov.TCPPort != nil {
+		base.TCPPort = *ov.TCPPort
+	}
+}
 
 func main() {
-	// Command-line flags
-	listenAddr := flag.String("listen", "", "Listen address for incoming peers (e.g., tls://0.0.0.0:9001). If set, runs as a server.")
-	peerAddr := flag.String("peer", "", "Peer address to connect to (e.g., tls://1.2.3.4:9001). If not set and not listening, uses default public peer.")
-	routerAddr := flag.String("router", "http://127.0.0.1:9003", "MCP router URL for forwarding tool requests")
+	apiCfg := defaultAPIConfig()
+	listenAddr := flag.String("listen", "", "Listen address override (optional)")
+	configPath := flag.String("config", defaultConfigPath, "Path to configuration file")
 	flag.Parse()
-
-	// Set router URL
-	routerURL = *routerAddr + "/route"
-	fmt.Printf("MCP Router: %s\n", routerURL)
-
-	// 1. Generate config
-	cfg := config.GenerateConfig()
-	cfg.IfName = "none"
 
 	// Create logger
 	logger := log.New(os.Stdout, "[ygg] ", 0)
@@ -47,46 +85,85 @@ func main() {
 	logger.EnableLevel("warn")
 	logger.EnableLevel("error")
 
-	// 2. Start the Yggdrasil core
-	var err error
-	options := []core.SetupOption{}
+	// Create Yggdrasil configuration
+	cfg := config.GenerateConfig()
+	file, err := os.Open(*configPath)
+	if err != nil {
+		logger.Fatalf("Failed to open config file %s: %v", *configPath, err)
+	}
+	defer file.Close()
+	if _, err := cfg.ReadFrom(file); err != nil {
+		logger.Fatalf("Failed to parse Yggdrasil config %s: %v", *configPath, err)
+	}
+	logger.Infof("Loaded Yggdrasil config from %s", *configPath)
+	cfg.IfName = "none" // Required for userspace mode
 
+	out, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(out))
+
+	// Create API configuration overrides
+	var overrides apiConfigOverrides
+	configBytes, err := os.ReadFile(*configPath)
+	if err != nil {
+		logger.Fatalf("Failed to read config file %s: %v", *configPath, err)
+	}
+	if err := json.Unmarshal(configBytes, &overrides); err != nil {
+		logger.Warnf("Failed to parse API overrides: %v", err)
+	} else {
+		applyOverrides(&apiCfg, overrides)
+	}
+
+	routerHost := strings.TrimRight(apiCfg.RouterAddr, "/")
+	if routerHost == "" {
+		routerHost = defaultRouterHost
+	}
+	routerPort := apiCfg.RouterPort
+	if routerPort == 0 {
+		routerPort = defaultRouterPort
+	}
+	routerURL = fmt.Sprintf("%s:%d/route", routerHost, routerPort)
+	logger.Infof("MCP Router URL: %s", routerURL)
+
+	// Start the Yggdrasil core
+	options := []core.SetupOption{}
 	if *listenAddr != "" {
-		fmt.Printf("Will listen on: %s\n", *listenAddr)
+		logger.Infof("Overriding listen address: %s", *listenAddr)
 		options = append(options, core.ListenAddress(*listenAddr))
 	}
 
-	if *peerAddr != "" {
-		fmt.Printf("Will connect to peer: %s\n", *peerAddr)
-		options = append(options, core.Peer{URI: *peerAddr})
-	} else if *listenAddr == "" {
-		defaultPeer := "tls://34.173.99.229:9001"
-		fmt.Printf("Using default peer: %s\n", defaultPeer)
-		options = append(options, core.Peer{URI: defaultPeer})
+	tcpPort := apiCfg.TCPPort
+	if tcpPort == 0 {
+		tcpPort = defaultTCPPort
 	}
 
-	yggCore, err = core.New(cfg.Certificate, logger, options...)
+	yggCore, err := core.New(cfg.Certificate, logger, options...)
 	if err != nil {
-		log.Fatalf("Failed to start Yggdrasil core: %v", err)
+		logger.Fatalf("Failed to start Yggdrasil core: %v", err)
 	}
 	defer yggCore.Stop()
 
-	fmt.Println("Yggdrasil Userspace Node Started!")
-	fmt.Printf("Our IPv6: %s\n", yggCore.Address().String())
-	fmt.Printf("Our Public Key: %s\n", hex.EncodeToString(yggCore.PublicKey()))
+	logger.Infof("Yggdrasil Userspace Node Started!")
+	logger.Infof("Our IPv6: %s", yggCore.Address().String())
+	logger.Infof("Our Public Key: %s", hex.EncodeToString(yggCore.PublicKey()))
 
-	// 3. Setup Userspace Network Stack (gVisor)
-	tcp.SetupNetworkStack(yggCore, TCPPort)
+	// Setup Userspace Network Stack (gVisor)
+	tcp.SetupNetworkStack(yggCore, tcpPort)
 
-	// 4. Start HTTP bridge for Application Layer
+	// Start HTTP bridge for Application Layer
 	http.HandleFunc("/topology", api.HandleTopology(yggCore))
-	http.HandleFunc("/send", api.HandleSend(TCPPort, tcp.NetStack))
+	http.HandleFunc("/send", api.HandleSend(tcpPort, tcp.NetStack))
 	http.HandleFunc("/recv", api.HandleRecv)
-	http.HandleFunc("/mcp/", api.HandleMCP(TCPPort, tcp.NetStack))
+	http.HandleFunc("/mcp/", api.HandleMCP(tcpPort, tcp.NetStack))
 
-	fmt.Println("Starting Local HTTP Bridge on localhost:9002...")
-	fmt.Println("MCP HTTP transport available at /mcp/{service}/{peer_key}")
-	if err := http.ListenAndServe("127.0.0.1:9002", nil); err != nil {
-		log.Fatalf("HTTP Server failed: %v", err)
+	apiPort := apiCfg.ApiPort
+	if apiPort == 0 {
+		apiPort = defaultAPIPort
+	}
+	listenAddrStr := fmt.Sprintf("127.0.0.1:%d", apiPort)
+	if err := http.ListenAndServe(listenAddrStr, nil); err != nil {
+		logger.Fatalf("HTTP Server failed: %v", err)
 	}
 }
