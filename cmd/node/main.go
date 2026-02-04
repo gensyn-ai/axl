@@ -98,18 +98,12 @@ func main() {
 	logger.Infof("Loaded Yggdrasil config from %s", *configPath)
 	cfg.IfName = "none" // Required for userspace mode
 
-	out, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(string(out))
-
 	// Create API configuration overrides
-	var overrides apiConfigOverrides
 	configBytes, err := os.ReadFile(*configPath)
 	if err != nil {
 		logger.Fatalf("Failed to read config file %s: %v", *configPath, err)
 	}
+	var overrides apiConfigOverrides
 	if err := json.Unmarshal(configBytes, &overrides); err != nil {
 		logger.Warnf("Failed to parse API overrides: %v", err)
 	} else {
@@ -129,9 +123,23 @@ func main() {
 
 	// Start the Yggdrasil core
 	options := []core.SetupOption{}
+	listens := append([]string{}, cfg.Listen...)
 	if *listenAddr != "" {
 		logger.Infof("Overriding listen address: %s", *listenAddr)
-		options = append(options, core.ListenAddress(*listenAddr))
+		listens = append([]string{*listenAddr}, listens...)
+	}
+	if len(listens) == 0 {
+		logger.Warnf("No listen addresses configured; node will operate outbound-only")
+	}
+	for _, addr := range listens {
+		options = append(options, core.ListenAddress(addr))
+	}
+	if len(cfg.Peers) == 0 {
+		logger.Warnf("No peers configured in %s; node will rely on listeners only", *configPath)
+	}
+	for _, peer := range cfg.Peers {
+		logger.Infof("Configured peer: %s", peer)
+		options = append(options, core.Peer{URI: peer})
 	}
 
 	tcpPort := apiCfg.TCPPort
