@@ -1,5 +1,5 @@
-github.com/Arceliar/ironwood v0.0.0-20251124020000-e1358f790504 h1:yQNDl2lGRV61efEug+cTnLYs7qnhnCm1TM42wZ+9xtE=
-github.com/Arceliar/ironwood v0.0.0-20251124020000-e1358f790504/go.mod h1:SrrElc3FFMpYCODSr11jWbLFeOM8WsY+DbDY/l2AXF0=
+github.com/Arceliar/ironwood v0.0.0-20241213013129-743fe2fccbd3 h1:d8N0z+udAnbU5PdjpLSNPTWlqeU/nnYsQ42B6+879aw=
+github.com/Arceliar/ironwood v0.0.0-20241213013129-743fe2fccbd3/go.mod h1:SrrElc3FFMpYCODSr11jWbLFeOM8WsY+DbDY/l2AXF0=
 github.com/Arceliar/phony v0.0.0-20220903101357-530938a4b13d h1:UK9fsWbWqwIQkMCz1CP+v5pGbsGoWAw6g4AyvMpm1EM=
 github.com/Arceliar/phony v0.0.0-20220903101357-530938a4b13d/go.mod h1:BCnxhRf47C/dy/e/D2pmB8NkB3dQVIrkD98b220rx5Q=
 github.com/bits-and-blooms/bitset v1.10.0/go.mod h1:7hO7Gc7Pp1vODcmWvKMRA9BNmbv6a/7QIWpPxHddWR8=
@@ -77,5 +77,3 @@ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 gvisor.dev/gvisor v0.0.0-20251209211007-f417d9b6ea17 h1:CTdvOHP748h9X1DaWKXWbhbxocNzbXIbz7rHk9cAERA=
 gvisor.dev/gvisor v0.0.0-20251209211007-f417d9b6ea17/go.mod h1:W1ZgZ/Dh85TgSZWH67l2jKVpDE5bjIaut7rjwwOiHzQ=
-gvisor.dev/gvisor v0.0.0-20251210232553-7e66b6cb36de h1:QyyHpcLkB3tm2cgiJ4wgRNiTRAHf7ly8V8ADwO8uKu4=
-gvisor.dev/gvisor v0.0.0-20251210232553-7e66b6cb36de/go.mod h1:W1ZgZ/Dh85TgSZWH67l2jKVpDE5bjIaut7rjwwOiHzQ=
