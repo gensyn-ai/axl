@@ -31,7 +31,6 @@ func main() {
 	listenAddr := flag.String("listen", "", "Listen address for incoming peers (e.g., tls://0.0.0.0:9001). If set, runs as a server.")
 	peerAddr := flag.String("peer", "", "Peer address to connect to (e.g., tls://1.2.3.4:9001). If not set and not listening, uses default public peer.")
 	routerAddr := flag.String("router", "http://127.0.0.1:9003", "MCP router URL for forwarding tool requests")
-	privateKeyHex := flag.String("private-key", "", "Hex-encoded private key for consistent peer ID (optional)")
 	flag.Parse()
 
 	// Set router URL
@@ -41,21 +40,6 @@ func main() {
 	// 1. Generate config
 	cfg := config.GenerateConfig()
 	cfg.IfName = "none"
-
-	// Use supplied private key if provided for consistent peer ID
-	if *privateKeyHex != "" {
-		privateKeyBytes, err := hex.DecodeString(*privateKeyHex)
-		if err != nil {
-			log.Fatalf("Failed to decode private key: %v", err)
-		}
-		if len(privateKeyBytes) != 32 {
-			log.Fatalf("Invalid private key length: expected 32 bytes, got %d", len(privateKeyBytes))
-		}
-		cfg.PrivateKey = config.KeyBytes(privateKeyBytes)
-		fmt.Printf("Using supplied private key for consistent peer ID\n")
-	} else {
-		fmt.Printf("Using generated private key (peer ID will change each restart)\n")
-	}
 
 	// Create logger
 	logger := log.New(os.Stdout, "[ygg] ", 0)
