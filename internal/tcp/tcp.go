@@ -184,6 +184,8 @@ func handleTCPConn(conn net.Conn) {
 
 	// Protocol: Length(4 bytes) + Data
 	mcpStream := mcp.NewMCPStream()
+	multiplexer := NewMultiplexer()
+	multiplexer.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
 	for {
 		// Read Length
 		lenBuf := make([]byte, 4)
@@ -202,27 +204,26 @@ func handleTCPConn(conn net.Conn) {
 			return
 		}
 
-		// Use stream multiplexing, like HTTP/2
-
-		// // Try to parse as MCP message
-		var mcpMsg api.MCPMessage
-		if mcpStream.IsAllowed(dataBuf, &mcpMsg) {
-			// This is an MCP request - forward to router
-			mcpMsg.FromKey = fromKey
-			respBytes, err := mcpStream.Forward(&mcpMsg)
-			if err != nil {
-				log.Printf("MCP forward error: %v", err)
+		// Use stream multiplexing for server applications (MCP), like HTTP/2
+		for _, stream := range multiplexer.sources {
+			msgPtr := multiplexer.requestTypes[stream.GetID()]()
+			if stream.IsAllowed(dataBuf, msgPtr) {
+				// This is request belongs to this stream
+				respBytes, err := stream.Forward(msgPtr, fromKey)
+				if err != nil {
+					log.Printf("Stream %d forward error: %v", stream.GetID(), err)
+					continue
+				}
+				if respBytes != nil {
+					if err := sendResponse(conn, respBytes); err != nil {
+						log.Printf("Stream %d failed to send response: %v", stream.GetID(), err)
+					}
+				}
 				continue
 			}
-			if respBytes != nil {
-				if err := sendResponse(conn, respBytes); err != nil {
-					log.Printf("Failed to send response: %v", err)
-				}
-			}
-			continue
 		}
 
-		// Not an MCP message - queue it for /recv
+		// Not an stream message - queue it for client applications pulling from /recv
 		msg := api.ReceivedMessage{
 			FromKey: fromKey,
 			Data:    dataBuf,

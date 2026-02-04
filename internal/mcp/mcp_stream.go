@@ -22,18 +22,26 @@ func (m *MCPStream) GetID() string {
 	return m.ID
 }
 
-func (m *MCPStream) IsAllowed(data []byte, mcpMsg *api.MCPMessage) bool {
-	if err := json.Unmarshal(data, mcpMsg); err == nil && mcpMsg.Service != "" {
+func (m *MCPStream) IsAllowed(data []byte, mcpMsg any) bool {
+	mcpMsgPtr, ok := mcpMsg.(*api.MCPMessage)
+	if !ok {
+		return false
+	}
+	if err := json.Unmarshal(data, mcpMsgPtr); err == nil && mcpMsgPtr.Service != "" {
 		return true
 	}
 	return false
 }
 
-func (m *MCPStream) Forward(mcpMsg *api.MCPMessage) (respBytes []byte, err error) {
-	respData, err := ForwardToRouter(mcpMsg.Service, mcpMsg.Request, mcpMsg.FromKey, m.client, m.routerURL)
+func (m *MCPStream) Forward(mcpMsg any, fromKey string) (respBytes []byte, err error) {
+	mcpMsgPtr, ok := mcpMsg.(*api.MCPMessage)
+	if !ok {
+		return nil, nil
+	}
+	respData, err := ForwardToRouter(mcpMsgPtr.Service, mcpMsgPtr.Request, fromKey, m.client, m.routerURL)
 
 	var mcpResp api.MCPResponse
-	mcpResp.Service = mcpMsg.Service
+	mcpResp.Service = mcpMsgPtr.Service
 
 	if err != nil {
 		log.Printf("MCP forward error: %v", err)

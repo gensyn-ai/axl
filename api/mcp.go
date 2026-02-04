@@ -26,9 +26,8 @@ var (
 
 // MCPMessage wraps an MCP request with routing info
 type MCPMessage struct {
-	Service string          `json:"service"`  // Target MCP service name (e.g., "weather")
-	Request json.RawMessage `json:"request"`  // The JSON-RPC request to forward
-	FromKey string          `json:"from_key"` // Source peer key for response routing
+	Service string          `json:"service"` // Target MCP service name (e.g., "weather")
+	Request json.RawMessage `json:"request"` // The JSON-RPC request to forward
 }
 
 // MCPResponse wraps an MCP response
