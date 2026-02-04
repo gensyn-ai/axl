@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/yggdrasil-network/yggdrasil-go/src/address"
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -88,29 +87,9 @@ func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 			return
 		}
 
-		// Try to read a response from the peer (for MCP request/response pattern)
-		// Set a read deadline so we don't block forever on non-MCP sends
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-
-		// Read 4-byte length prefix
-		respLenBuf := make([]byte, 4)
-		if _, err := io.ReadFull(conn, respLenBuf); err != nil {
-			// No response (fire-and-forget message), return just the sent bytes
-			w.Header().Set("Content-Type", "application/octet-stream")
-			w.Header().Set("X-Sent-Bytes", fmt.Sprintf("%d", len(data)))
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		respLen := binary.BigEndian.Uint32(respLenBuf)
-		respBuf := make([]byte, respLen)
-		if _, err := io.ReadFull(conn, respBuf); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to read response data: %v", err), http.StatusBadGateway)
-			return
-		}
-
-		// Return the peer's response
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(respBuf)
+		// Return minimal response immediately; MCP traffic uses a separate endpoint.
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("X-Sent-Bytes", fmt.Sprintf("%d", len(data)))
+		w.WriteHeader(http.StatusOK)
 	}
 }
