@@ -147,7 +147,7 @@ func run() error {
 
 	// Setup Userspace Network Stack (gVisor)
 	tcpPort := apiCfg.TCPPort
-	tcp.SetupNetworkStack(yggCore, tcpPort)
+	tcp.SetupNetworkStack(yggCore, tcpPort, routerURL)
 
 	handler := newHandler(yggCore, tcpPort)
 	listenAddrStr := fmt.Sprintf("%s:%d", apiCfg.BridgeAddr, apiCfg.ApiPort)
