@@ -1,8 +1,10 @@
 package api
 
 import (
+	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"net"
 	"net/http"
 
 	"github.com/yggdrasil-network/yggdrasil-go/src/core"
@@ -32,9 +34,15 @@ type TreeInfo struct {
 	Sequence  uint64 `json:"sequence"`
 }
 
-var yggCore *core.Core
+// TopologyProvider exposes the subset of core.Core used by HandleTopology.
+type TopologyProvider interface {
+	GetPeers() []core.PeerInfo
+	GetTree() []core.TreeEntryInfo
+	Address() net.IP
+	PublicKey() ed25519.PublicKey
+}
 
-func HandleTopology(yggCore *core.Core) http.HandlerFunc {
+func HandleTopology(yggCore TopologyProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		peers := yggCore.GetPeers()
 		tree := yggCore.GetTree()
