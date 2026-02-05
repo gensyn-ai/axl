@@ -150,20 +150,11 @@ func run() error {
 	tcplisten.SetupNetworkStack(yggCore, tcpPort, routerURL)
 
 	// Create HTTP Bridge
-	handler := newHandler(yggCore, tcpPort)
+	handler := api.NewHandler(yggCore, tcpPort, tcplisten.NetStack)
 	listenAddrStr := fmt.Sprintf("%s:%d", apiCfg.BridgeAddr, apiCfg.ApiPort)
 	fmt.Println("Listening on", listenAddrStr)
 	if err := http.ListenAndServe(listenAddrStr, handler); err != nil {
 		return fmt.Errorf("HTTP server failed: %w", err)
 	}
 	return nil
-}
-
-func newHandler(yggCore *core.Core, tcpPort int) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/topology", api.HandleTopology(yggCore))
-	mux.HandleFunc("/send", api.HandleSend(tcpPort, tcplisten.NetStack))
-	mux.HandleFunc("/recv", api.HandleRecv)
-	mux.HandleFunc("/mcp/", api.HandleMCP(tcpPort, tcplisten.NetStack))
-	return mux
 }

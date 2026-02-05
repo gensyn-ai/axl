@@ -36,19 +36,19 @@ type MCPResponse struct {
 }
 
 // handleMCP implements the MCP Streamable HTTP transport.
-// URL format: /mcp/{service}/{peer_key}
+// URL format: /mcp/{peer_key}/{service}
 // Claude Code connects here as a remote MCP server via HTTP transport.
 func HandleMCP(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Parse path: /mcp/{service}/{peer_key}
+		// Parse path: /mcp/{peer_key}/{service}
 		path := strings.TrimPrefix(r.URL.Path, "/mcp/")
 		parts := strings.SplitN(path, "/", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			http.Error(w, "URL must be /mcp/{service}/{peer_key}", http.StatusBadRequest)
+			http.Error(w, "URL must be /mcp/{peer_key}/{service}", http.StatusBadRequest)
 			return
 		}
-		service := parts[0]
-		peerKeyHex := parts[1]
+		peerKeyHex := parts[0]
+		service := parts[1]
 
 		switch r.Method {
 		case "POST":
