@@ -2,6 +2,7 @@ package tcpdial
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,11 +13,16 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
+var (
+	ErrInvalidPeerKey = errors.New("invalid peer key")
+	ErrDialPeer       = errors.New("failed to reach peer")
+)
+
 func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerKeyHex string, timeout time.Duration) (*gonet.TCPConn, error) {
 
 	destKeyBytes, err := hex.DecodeString(peerKeyHex)
 	if err != nil || len(destKeyBytes) != 32 {
-		return nil, fmt.Errorf("invalid peer key")
+		return nil, ErrInvalidPeerKey
 	}
 	var keyArr [32]byte
 	copy(keyArr[:], destKeyBytes)
@@ -30,7 +36,7 @@ func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerKeyHex string, t
 		Port: uint16(tcpPort),
 	}, header.IPv6ProtocolNumber)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reach peer: %v", err)
+		return nil, fmt.Errorf("%w: %v", ErrDialPeer, err)
 	}
 	conn.SetReadDeadline(time.Now().Add(timeout))
 

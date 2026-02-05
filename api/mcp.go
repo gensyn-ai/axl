@@ -180,10 +180,10 @@ func sendMCPRequest(conn net.Conn, envelopeBytes []byte) error {
 	lenBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(lenBuf, uint32(len(envelopeBytes)))
 	if _, err := conn.Write(lenBuf); err != nil {
-		return fmt.Errorf("failed to send to peer", http.StatusBadGateway)
+		return fmt.Errorf("failed to send to peer: %w", err)
 	}
 	if _, err := conn.Write(envelopeBytes); err != nil {
-		return fmt.Errorf("failed to send to peer", http.StatusBadGateway)
+		return fmt.Errorf("failed to send to peer: %w", err)
 	}
 	return nil
 }
@@ -191,12 +191,12 @@ func sendMCPRequest(conn net.Conn, envelopeBytes []byte) error {
 func readMCPResponse(conn net.Conn) ([]byte, error) {
 	respLenBuf := make([]byte, 4)
 	if _, err := io.ReadFull(conn, respLenBuf); err != nil {
-		return nil, fmt.Errorf("no response from peer", http.StatusGatewayTimeout)
+		return nil, fmt.Errorf("no response from peer: %w", err)
 	}
 	respLen := binary.BigEndian.Uint32(respLenBuf)
 	respBuf := make([]byte, respLen)
 	if _, err := io.ReadFull(conn, respBuf); err != nil {
-		return nil, fmt.Errorf("failed to read peer response", http.StatusBadGateway)
+		return nil, fmt.Errorf("failed to read peer response: %w", err)
 	}
 	return respBuf, nil
 }

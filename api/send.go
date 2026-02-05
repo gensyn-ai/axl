@@ -2,17 +2,24 @@ package api
 
 import (
 	"encoding/binary"
-	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
-	"github.com/yggdrasil-network/yggdrasil-go/src/address"
-	"gvisor.dev/gvisor/pkg/tcpip"
-	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
-	"gvisor.dev/gvisor/pkg/tcpip/header"
+	"example.com/internal/tcpdial"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
+
+type peerConn interface {
+	io.Writer
+	io.Closer
+}
+
+var dialPeerConnection = func(netStack *stack.Stack, tcpPort int, peerKeyHex string) (peerConn, error) {
+	return tcpdial.DialPeerConnection(netStack, tcpPort, peerKeyHex, 0*time.Second)
+}
 
 // SendRequest is what Python sends to /send
 type SendRequest struct {
@@ -34,22 +41,6 @@ func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 			return
 		}
 
-		// Decode destination public key
-		destKeyBytes, err := hex.DecodeString(destKeyHex)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Invalid destination key: %v", err), http.StatusBadRequest)
-			return
-		}
-
-		// Convert Key -> IPv6 Address
-		if len(destKeyBytes) != 32 {
-			http.Error(w, "Invalid key length", http.StatusBadRequest)
-			return
-		}
-		var keyArr [32]byte
-		copy(keyArr[:], destKeyBytes)
-		destAddr := address.AddrForKey(keyArr[:])
-
 		// Read raw binary body directly (no JSON/base64 decoding)
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -57,17 +48,16 @@ func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 			return
 		}
 
-		// Dial via gVisor
-		destIP := tcpip.AddrFromSlice(destAddr[:])
-
-		conn, err := gonet.DialTCP(netStack, tcpip.FullAddress{
-			NIC:  0,
-			Addr: destIP,
-			Port: uint16(TCPPort),
-		}, header.IPv6ProtocolNumber)
-
+		conn, err := dialPeerConnection(netStack, TCPPort, destKeyHex)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("DialTCP failed: %v", err), http.StatusInternalServerError)
+			switch {
+			case errors.Is(err, tcpdial.ErrInvalidPeerKey):
+				http.Error(w, "Invalid destination key", http.StatusBadRequest)
+			case errors.Is(err, tcpdial.ErrDialPeer):
+				http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
+			default:
+				http.Error(w, fmt.Sprintf("Dial failed: %v", err), http.StatusInternalServerError)
+			}
 			return
 		}
 		defer conn.Close()
