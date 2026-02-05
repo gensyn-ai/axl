@@ -30,7 +30,7 @@ const (
 	defaultTCPPort     = 7000
 	defaultAPIPort     = 9002
 	defaultRouterHost  = "http://127.0.0.1"
-	defaultBrideHost   = "http://127.0.0.1"
+	defaultBrideHost   = "127.0.0.1"
 	defaultRouterPort  = 9003
 	defaultConfigPath  = "node-config.json"
 	defaultListenUsage = "Custom listen address (optional)"
@@ -73,6 +73,12 @@ func applyOverrides(base *ApiConfig, ov ApiConfig) {
 }
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatalf("Node exited with error: \n%v", err)
+	}
+}
+
+func run() error {
 	apiCfg := defaultAPIConfig()
 	listenAddr := flag.String("listen", "", "Listen address override (optional)")
 	configPath := flag.String("config", defaultConfigPath, "Path to configuration file")
@@ -88,11 +94,11 @@ func main() {
 	cfg := config.GenerateConfig()
 	file, err := os.Open(*configPath)
 	if err != nil {
-		logger.Fatalf("Failed to open config file %s: %v", *configPath, err)
+		return fmt.Errorf("open config %s: %w", *configPath, err)
 	}
 	defer file.Close()
 	if _, err := cfg.ReadFrom(file); err != nil {
-		logger.Fatalf("Failed to parse Yggdrasil config %s: %v", *configPath, err)
+		return fmt.Errorf("parse config %s: %w", *configPath, err)
 	}
 	logger.Infof("Loaded Yggdrasil config from %s", *configPath)
 	cfg.IfName = "none" // Required for userspace mode
@@ -100,12 +106,10 @@ func main() {
 	// Create API configuration overrides
 	configBytes, err := os.ReadFile(*configPath)
 	if err != nil {
-		logger.Fatalf("Failed to read config file %s: %v", *configPath, err)
+		return fmt.Errorf("read config %s: %w", *configPath, err)
 	}
 	var overrides ApiConfig
-	if err := json.Unmarshal(configBytes, &overrides); err != nil {
-		logger.Warnf("Failed to parse API overrides: %v", err)
-	} else {
+	if err := json.Unmarshal(configBytes, &overrides); err == nil {
 		applyOverrides(&apiCfg, overrides)
 	}
 
@@ -113,8 +117,7 @@ func main() {
 	if routerHost == "" {
 		routerHost = defaultRouterHost
 	}
-	routerPort := apiCfg.RouterPort
-	routerURL = fmt.Sprintf("%s:%d/route", routerHost, routerPort)
+	routerURL = fmt.Sprintf("%s:%d/route", routerHost, apiCfg.RouterPort)
 	logger.Infof("MCP Router URL: %s", routerURL)
 
 	// Start the Yggdrasil core
@@ -124,14 +127,8 @@ func main() {
 		logger.Infof("Overriding listen address: %s", *listenAddr)
 		listens = append([]string{*listenAddr}, listens...)
 	}
-	if len(listens) == 0 {
-		logger.Warnf("No listen addresses configured")
-	}
 	for _, addr := range listens {
 		options = append(options, core.ListenAddress(addr))
-	}
-	if len(cfg.Peers) == 0 {
-		logger.Warnf("No peers configured in %s; node will rely on listeners only", *configPath)
 	}
 	for _, peer := range cfg.Peers {
 		logger.Infof("Configured peer: %s", peer)
@@ -140,7 +137,7 @@ func main() {
 
 	yggCore, err := core.New(cfg.Certificate, logger, options...)
 	if err != nil {
-		logger.Fatalf("Failed to start Yggdrasil core: %v", err)
+		return fmt.Errorf("start core: %w", err)
 	}
 	defer yggCore.Stop()
 
@@ -152,14 +149,20 @@ func main() {
 	tcpPort := apiCfg.TCPPort
 	tcp.SetupNetworkStack(yggCore, tcpPort)
 
-	// Start HTTP bridge for Application Layer
-	http.HandleFunc("/topology", api.HandleTopology(yggCore))
-	http.HandleFunc("/send", api.HandleSend(tcpPort, tcp.NetStack))
-	http.HandleFunc("/recv", api.HandleRecv)
-	http.HandleFunc("/mcp/", api.HandleMCP(tcpPort, tcp.NetStack))
-
+	handler := newHandler(yggCore, tcpPort)
 	listenAddrStr := fmt.Sprintf("%s:%d", apiCfg.BridgeAddr, apiCfg.ApiPort)
-	if err := http.ListenAndServe(listenAddrStr, nil); err != nil {
-		logger.Fatalf("HTTP Server failed: %v", err)
+	fmt.Println("Listening on", listenAddrStr)
+	if err := http.ListenAndServe(listenAddrStr, handler); err != nil {
+		return fmt.Errorf("HTTP server failed: %w", err)
 	}
+	return nil
+}
+
+func newHandler(yggCore *core.Core, tcpPort int) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/topology", api.HandleTopology(yggCore))
+	mux.HandleFunc("/send", api.HandleSend(tcpPort, tcp.NetStack))
+	mux.HandleFunc("/recv", api.HandleRecv)
+	mux.HandleFunc("/mcp/", api.HandleMCP(tcpPort, tcp.NetStack))
+	return mux
 }
