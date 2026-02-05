@@ -14,8 +14,8 @@ type MCPStream struct {
 	routerURL string
 }
 
-func NewMCPStream() *MCPStream {
-	return &MCPStream{ID: "mcp", client: &http.Client{}, routerURL: "http://localhost:9003/route"}
+func NewMCPStream(routerURL string) *MCPStream {
+	return &MCPStream{ID: "mcp", client: &http.Client{}, routerURL: routerURL}
 }
 
 func (m *MCPStream) GetID() string {
