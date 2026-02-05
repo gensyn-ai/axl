@@ -1,0 +1,151 @@
+package api
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestNewHandlerRouting(t *testing.T) {
+	// Create handler with nil dependencies (we're just testing routing, not full functionality)
+	// Note: topology route requires real yggCore so we skip it here
+	handler := NewHandler(nil, 7000, nil)
+
+	tests := []struct {
+		name           string
+		method         string
+		path           string
+		expectStatus   int
+		expectContains string
+	}{
+		{
+			name:         "recv route exists - empty queue returns 204",
+			method:       http.MethodGet,
+			path:         "/recv",
+			expectStatus: http.StatusNoContent,
+		},
+		{
+			name:         "send route exists - wrong method",
+			method:       http.MethodGet,
+			path:         "/send",
+			expectStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:         "send route exists - missing header",
+			method:       http.MethodPost,
+			path:         "/send",
+			expectStatus: http.StatusBadRequest,
+		},
+		{
+			name:         "mcp route exists - invalid path",
+			method:       http.MethodPost,
+			path:         "/mcp/",
+			expectStatus: http.StatusBadRequest,
+		},
+		{
+			name:         "mcp route exists - wrong method",
+			method:       http.MethodGet,
+			path:         "/mcp/peer/service",
+			expectStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name:         "unknown route returns 404",
+			method:       http.MethodGet,
+			path:         "/unknown",
+			expectStatus: http.StatusNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != tt.expectStatus {
+				t.Errorf("expected status %d, got %d", tt.expectStatus, w.Code)
+			}
+		})
+	}
+}
+
+func TestNewHandlerMCPRouting(t *testing.T) {
+	resetMCPSessions(t)
+	handler := NewHandler(nil, 7000, nil)
+
+	// Test that MCP routes are properly registered with path prefix matching
+	tests := []struct {
+		name   string
+		path   string
+		method string
+		body   string
+	}{
+		{
+			name:   "mcp with peer and service",
+			path:   "/mcp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/weather",
+			method: http.MethodPost,
+			body:   `{"method":"notifications/initialized"}`,
+		},
+		{
+			name:   "mcp with different service",
+			path:   "/mcp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/calendar",
+			method: http.MethodPost,
+			body:   `{"method":"notifications/initialized"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			// notifications/initialized returns 202 Accepted
+			if w.Code != http.StatusAccepted {
+				t.Errorf("expected status %d, got %d (body: %s)", http.StatusAccepted, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestNewHandlerRecvIntegration(t *testing.T) {
+	handler := NewHandler(nil, 7000, nil)
+
+	// Clear the queue
+	RecvMutex.Lock()
+	RecvQueue = nil
+	RecvMutex.Unlock()
+
+	// Add a message to the queue
+	RecvMutex.Lock()
+	RecvQueue = append(RecvQueue, ReceivedMessage{
+		FromKey: "testkey123",
+		Data:    []byte("test data"),
+	})
+	RecvMutex.Unlock()
+
+	// Request through the handler
+	req := httptest.NewRequest(http.MethodGet, "/recv", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	// FromKey is returned in the X-From-Key header
+	fromKey := w.Header().Get("X-From-Key")
+	if fromKey != "testkey123" {
+		t.Errorf("expected X-From-Key header 'testkey123', got %s", fromKey)
+	}
+
+	// Body contains the raw data
+	body := w.Body.String()
+	if body != "test data" {
+		t.Errorf("expected body 'test data', got %s", body)
+	}
+}
