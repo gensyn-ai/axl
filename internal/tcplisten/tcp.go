@@ -1,4 +1,4 @@
-package tcp
+package tcplisten
 
 import (
 	"encoding/binary"
@@ -29,7 +29,7 @@ var (
 	NetStack *stack.Stack
 )
 
-func SetupNetworkStack(yggCore *core.Core, tcpPort int) {
+func SetupNetworkStack(yggCore *core.Core, tcpPort int, routerURL string) {
 	// Create ipv6rwc wrapper
 	rwc := ipv6rwc.NewReadWriteCloser(yggCore)
 
@@ -136,10 +136,10 @@ func SetupNetworkStack(yggCore *core.Core, tcpPort int) {
 	})
 
 	// Start TCP Listener
-	go startTCPListener(tcpPort)
+	go startTCPListener(tcpPort, routerURL)
 }
 
-func startTCPListener(tcpPort int) {
+func startTCPListener(tcpPort int, routerURL string) {
 	// Listen on [::]:7000
 	listener, err := gonet.ListenTCP(NetStack, tcpip.FullAddress{
 		NIC:  0,
@@ -158,11 +158,11 @@ func startTCPListener(tcpPort int) {
 			log.Printf("Accept error: %v", err)
 			continue
 		}
-		go handleTCPConn(conn)
+		go handleTCPConn(conn, routerURL)
 	}
 }
 
-func handleTCPConn(conn net.Conn) {
+func handleTCPConn(conn net.Conn, routerURL string) {
 	defer conn.Close()
 
 	// Identify Sender
@@ -183,7 +183,7 @@ func handleTCPConn(conn net.Conn) {
 	log.Printf("Connection from peer %s...", fromKey[:16])
 
 	// Protocol: Length(4 bytes) + Data
-	mcpStream := mcp.NewMCPStream()
+	mcpStream := mcp.NewMCPStream(routerURL)
 	multiplexer := NewMultiplexer()
 	multiplexer.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
 	for {
@@ -250,4 +250,28 @@ func sendResponse(conn net.Conn, data []byte) error {
 		return fmt.Errorf("failed to write data: %w", err)
 	}
 	return nil
+}
+
+func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerKeyHex string) (*gonet.TCPConn, error) {
+
+	destKeyBytes, err := hex.DecodeString(peerKeyHex)
+	if err != nil || len(destKeyBytes) != 32 {
+		return nil, fmt.Errorf("invalid peer key")
+	}
+	var keyArr [32]byte
+	copy(keyArr[:], destKeyBytes)
+	destAddr := address.AddrForKey(keyArr[:])
+
+	// Dial the remote peer
+	destIP := tcpip.AddrFromSlice(destAddr[:])
+	conn, err := gonet.DialTCP(netStack, tcpip.FullAddress{
+		NIC:  0,
+		Addr: destIP,
+		Port: uint16(tcpPort),
+	}, header.IPv6ProtocolNumber)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach peer: %v", err)
+	}
+
+	return conn, nil
 }
