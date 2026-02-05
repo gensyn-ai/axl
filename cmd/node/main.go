@@ -30,6 +30,7 @@ const (
 	defaultTCPPort     = 7000
 	defaultAPIPort     = 9002
 	defaultRouterHost  = "http://127.0.0.1"
+	defaultBrideHost   = "http://127.0.0.1"
 	defaultRouterPort  = 9003
 	defaultConfigPath  = "node-config.json"
 	defaultListenUsage = "Custom listen address (optional)"
@@ -39,6 +40,7 @@ type ApiConfig struct {
 	ApiPort    int    `json:"api_port"`
 	RouterAddr string `json:"router_addr"`
 	RouterPort int    `json:"router_port"`
+	BridgeAddr string `json:"bridge_addr"`
 	TCPPort    int    `json:"tcp_port"`
 }
 
@@ -47,29 +49,26 @@ func defaultAPIConfig() ApiConfig {
 		ApiPort:    defaultAPIPort,
 		RouterAddr: defaultRouterHost,
 		RouterPort: defaultRouterPort,
+		BridgeAddr: defaultBrideHost,
 		TCPPort:    defaultTCPPort,
 	}
 }
 
-type apiConfigOverrides struct {
-	ApiPort    *int    `json:"api_port"`
-	RouterAddr *string `json:"router_addr"`
-	RouterPort *int    `json:"router_port"`
-	TCPPort    *int    `json:"tcp_port"`
-}
-
-func applyOverrides(base *ApiConfig, ov apiConfigOverrides) {
-	if ov.ApiPort != nil {
-		base.ApiPort = *ov.ApiPort
+func applyOverrides(base *ApiConfig, ov ApiConfig) {
+	if ov.ApiPort != 0 {
+		base.ApiPort = ov.ApiPort
 	}
-	if ov.RouterAddr != nil {
-		base.RouterAddr = *ov.RouterAddr
+	if ov.RouterAddr != "" {
+		base.RouterAddr = ov.RouterAddr
 	}
-	if ov.RouterPort != nil {
-		base.RouterPort = *ov.RouterPort
+	if ov.RouterPort != 0 {
+		base.RouterPort = ov.RouterPort
 	}
-	if ov.TCPPort != nil {
-		base.TCPPort = *ov.TCPPort
+	if ov.BridgeAddr != "" {
+		base.BridgeAddr = ov.BridgeAddr
+	}
+	if ov.TCPPort != 0 {
+		base.TCPPort = ov.TCPPort
 	}
 }
 
@@ -103,7 +102,7 @@ func main() {
 	if err != nil {
 		logger.Fatalf("Failed to read config file %s: %v", *configPath, err)
 	}
-	var overrides apiConfigOverrides
+	var overrides ApiConfig
 	if err := json.Unmarshal(configBytes, &overrides); err != nil {
 		logger.Warnf("Failed to parse API overrides: %v", err)
 	} else {
@@ -115,9 +114,6 @@ func main() {
 		routerHost = defaultRouterHost
 	}
 	routerPort := apiCfg.RouterPort
-	if routerPort == 0 {
-		routerPort = defaultRouterPort
-	}
 	routerURL = fmt.Sprintf("%s:%d/route", routerHost, routerPort)
 	logger.Infof("MCP Router URL: %s", routerURL)
 
@@ -129,7 +125,7 @@ func main() {
 		listens = append([]string{*listenAddr}, listens...)
 	}
 	if len(listens) == 0 {
-		logger.Warnf("No listen addresses configured; node will operate outbound-only")
+		logger.Warnf("No listen addresses configured")
 	}
 	for _, addr := range listens {
 		options = append(options, core.ListenAddress(addr))
@@ -140,11 +136,6 @@ func main() {
 	for _, peer := range cfg.Peers {
 		logger.Infof("Configured peer: %s", peer)
 		options = append(options, core.Peer{URI: peer})
-	}
-
-	tcpPort := apiCfg.TCPPort
-	if tcpPort == 0 {
-		tcpPort = defaultTCPPort
 	}
 
 	yggCore, err := core.New(cfg.Certificate, logger, options...)
@@ -158,6 +149,7 @@ func main() {
 	logger.Infof("Our Public Key: %s", hex.EncodeToString(yggCore.PublicKey()))
 
 	// Setup Userspace Network Stack (gVisor)
+	tcpPort := apiCfg.TCPPort
 	tcp.SetupNetworkStack(yggCore, tcpPort)
 
 	// Start HTTP bridge for Application Layer
@@ -166,11 +158,7 @@ func main() {
 	http.HandleFunc("/recv", api.HandleRecv)
 	http.HandleFunc("/mcp/", api.HandleMCP(tcpPort, tcp.NetStack))
 
-	apiPort := apiCfg.ApiPort
-	if apiPort == 0 {
-		apiPort = defaultAPIPort
-	}
-	listenAddrStr := fmt.Sprintf("127.0.0.1:%d", apiPort)
+	listenAddrStr := fmt.Sprintf("%s:%d", apiCfg.BridgeAddr, apiCfg.ApiPort)
 	if err := http.ListenAndServe(listenAddrStr, nil); err != nil {
 		logger.Fatalf("HTTP Server failed: %v", err)
 	}
