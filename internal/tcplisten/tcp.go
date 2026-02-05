@@ -211,12 +211,12 @@ func handleTCPConn(conn net.Conn, routerURL string) {
 				// This is request belongs to this stream
 				respBytes, err := stream.Forward(msgPtr, fromKey)
 				if err != nil {
-					log.Printf("Stream %d forward error: %v", stream.GetID(), err)
+					log.Printf("Stream %s forward error: %v", stream.GetID(), err)
 					continue
 				}
 				if respBytes != nil {
 					if err := sendResponse(conn, respBytes); err != nil {
-						log.Printf("Stream %d failed to send response: %v", stream.GetID(), err)
+						log.Printf("Stream %s failed to send response: %v", stream.GetID(), err)
 					}
 				}
 				continue
