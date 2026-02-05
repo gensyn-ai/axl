@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"example.com/api"
-	"example.com/internal/tcp"
+	"example.com/internal/tcplisten"
 
 	"github.com/gologme/log"
 	"github.com/yggdrasil-network/yggdrasil-go/src/config"
@@ -147,8 +147,9 @@ func run() error {
 
 	// Setup Userspace Network Stack (gVisor)
 	tcpPort := apiCfg.TCPPort
-	tcp.SetupNetworkStack(yggCore, tcpPort, routerURL)
+	tcplisten.SetupNetworkStack(yggCore, tcpPort, routerURL)
 
+	// Create HTTP Bridge
 	handler := newHandler(yggCore, tcpPort)
 	listenAddrStr := fmt.Sprintf("%s:%d", apiCfg.BridgeAddr, apiCfg.ApiPort)
 	fmt.Println("Listening on", listenAddrStr)
@@ -161,8 +162,8 @@ func run() error {
 func newHandler(yggCore *core.Core, tcpPort int) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/topology", api.HandleTopology(yggCore))
-	mux.HandleFunc("/send", api.HandleSend(tcpPort, tcp.NetStack))
+	mux.HandleFunc("/send", api.HandleSend(tcpPort, tcplisten.NetStack))
 	mux.HandleFunc("/recv", api.HandleRecv)
-	mux.HandleFunc("/mcp/", api.HandleMCP(tcpPort, tcp.NetStack))
+	mux.HandleFunc("/mcp/", api.HandleMCP(tcpPort, tcplisten.NetStack))
 	return mux
 }

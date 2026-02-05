@@ -2,20 +2,18 @@ package api
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/yggdrasil-network/yggdrasil-go/src/address"
-	"gvisor.dev/gvisor/pkg/tcpip"
-	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
-	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
+
+	"example.com/internal/tcpdial"
 )
 
 var (
@@ -127,23 +125,7 @@ func handleMCPPost(
 	}
 	envelopeBytes, _ := json.Marshal(envelope)
 
-	// Decode peer key
-	destKeyBytes, err := hex.DecodeString(peerKeyHex)
-	if err != nil || len(destKeyBytes) != 32 {
-		http.Error(w, "Invalid peer key", http.StatusBadRequest)
-		return
-	}
-	var keyArr [32]byte
-	copy(keyArr[:], destKeyBytes)
-	destAddr := address.AddrForKey(keyArr[:])
-
-	// Dial the remote peer
-	destIP := tcpip.AddrFromSlice(destAddr[:])
-	conn, err := gonet.DialTCP(netStack, tcpip.FullAddress{
-		NIC:  0,
-		Addr: destIP,
-		Port: uint16(TCPPort),
-	}, header.IPv6ProtocolNumber)
+	conn, err := tcpdial.DialPeerConnection(netStack, TCPPort, peerKeyHex, 30*time.Second)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 		return
@@ -151,29 +133,16 @@ func handleMCPPost(
 	defer conn.Close()
 
 	// Send length-prefixed envelope
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(envelopeBytes)))
-	if _, err := conn.Write(lenBuf); err != nil {
-		http.Error(w, "Failed to send to peer", http.StatusBadGateway)
-		return
-	}
-	if _, err := conn.Write(envelopeBytes); err != nil {
+	err = sendMCPRequest(conn, envelopeBytes)
+	if err != nil {
 		http.Error(w, "Failed to send to peer", http.StatusBadGateway)
 		return
 	}
 
 	// Read the response from the peer
-	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-
-	respLenBuf := make([]byte, 4)
-	if _, err := io.ReadFull(conn, respLenBuf); err != nil {
-		http.Error(w, "No response from peer", http.StatusGatewayTimeout)
-		return
-	}
-	respLen := binary.BigEndian.Uint32(respLenBuf)
-	respBuf := make([]byte, respLen)
-	if _, err := io.ReadFull(conn, respBuf); err != nil {
-		http.Error(w, "Failed to read peer response", http.StatusBadGateway)
+	respBuf, err := readMCPResponse(conn)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
 
@@ -205,4 +174,29 @@ func handleMCPPost(
 		w.Header().Set("Mcp-Session-Id", sessionID)
 	}
 	w.Write(mcpResp.Response)
+}
+
+func sendMCPRequest(conn net.Conn, envelopeBytes []byte) error {
+	lenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(envelopeBytes)))
+	if _, err := conn.Write(lenBuf); err != nil {
+		return fmt.Errorf("failed to send to peer", http.StatusBadGateway)
+	}
+	if _, err := conn.Write(envelopeBytes); err != nil {
+		return fmt.Errorf("failed to send to peer", http.StatusBadGateway)
+	}
+	return nil
+}
+
+func readMCPResponse(conn net.Conn) ([]byte, error) {
+	respLenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, respLenBuf); err != nil {
+		return nil, fmt.Errorf("no response from peer", http.StatusGatewayTimeout)
+	}
+	respLen := binary.BigEndian.Uint32(respLenBuf)
+	respBuf := make([]byte, respLen)
+	if _, err := io.ReadFull(conn, respBuf); err != nil {
+		return nil, fmt.Errorf("failed to read peer response", http.StatusBadGateway)
+	}
+	return respBuf, nil
 }
