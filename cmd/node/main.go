@@ -30,7 +30,7 @@ const (
 	defaultTCPPort     = 7000
 	defaultAPIPort     = 9002
 	defaultRouterHost  = "http://127.0.0.1"
-	defaultBrideHost   = "127.0.0.1"
+	defaultBrideHost   = "127.0.0.1" // must exclude http prefix, must only be the host literal
 	defaultRouterPort  = 9003
 	defaultConfigPath  = "node-config.json"
 	defaultListenUsage = "Custom listen address (optional)"
