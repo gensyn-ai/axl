@@ -7,8 +7,8 @@ import (
 
 // ReceivedMessage holds incoming data with sender info
 type ReceivedMessage struct {
-	FromKey string `json:"from_key"`
-	Data    []byte `json:"data"`
+	FromPeerId string `json:"from_peer_id"`
+	Data       []byte `json:"data"`
 }
 
 var (
@@ -29,8 +29,8 @@ func HandleRecv(w http.ResponseWriter, r *http.Request) {
 	msg := RecvQueue[0]
 	RecvQueue = RecvQueue[1:]
 
-	// Return raw binary with sender key in header (no JSON/base64)
+	// Return raw binary with sender peer ID in header (no JSON/base64)
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("X-From-Key", msg.FromKey)
+	w.Header().Set("X-From-Peer-Id", msg.FromPeerId)
 	w.Write(msg.Data)
 }

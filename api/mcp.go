@@ -36,23 +36,23 @@ type MCPResponse struct {
 }
 
 // handleMCP implements the MCP Streamable HTTP transport.
-// URL format: /mcp/{peer_key}/{service}
+// URL format: /mcp/{peer_id}/{service}
 // Claude Code connects here as a remote MCP server via HTTP transport.
 func HandleMCP(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Parse path: /mcp/{peer_key}/{service}
+		// Parse path: /mcp/{peer_id}/{service}
 		path := strings.TrimPrefix(r.URL.Path, "/mcp/")
 		parts := strings.SplitN(path, "/", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			http.Error(w, "URL must be /mcp/{peer_key}/{service}", http.StatusBadRequest)
+			http.Error(w, "URL must be /mcp/{peer_id}/{service}", http.StatusBadRequest)
 			return
 		}
-		peerKeyHex := parts[0]
+		peerId := parts[0]
 		service := parts[1]
 
 		switch r.Method {
 		case "POST":
-			handleMCPPost(w, r, service, peerKeyHex, TCPPort, netStack)
+			handleMCPPost(w, r, service, peerId, TCPPort, netStack)
 		case "DELETE":
 			// Session termination
 			sessionID := r.Header.Get("Mcp-Session-Id")
@@ -72,7 +72,7 @@ func handleMCPPost(
 	w http.ResponseWriter,
 	r *http.Request,
 	service string,
-	peerKeyHex string,
+	peerId string,
 	TCPPort int,
 	netStack *stack.Stack,
 ) {
@@ -103,7 +103,7 @@ func handleMCPPost(
 	sessionID := r.Header.Get("Mcp-Session-Id")
 	if jsonrpcReq.Method == "initialize" {
 		// Generate session ID
-		sessionID = fmt.Sprintf("mcp-%s-%s-%d", service, peerKeyHex[:8], time.Now().UnixNano())
+		sessionID = fmt.Sprintf("mcp-%s-%s-%d", service, peerId[:8], time.Now().UnixNano())
 		mcpSessionMutex.Lock()
 		mcpSessions[sessionID] = true
 		mcpSessionMutex.Unlock()
@@ -125,7 +125,7 @@ func handleMCPPost(
 	}
 	envelopeBytes, _ := json.Marshal(envelope)
 
-	conn, err := dial.DialPeerConnection(netStack, TCPPort, peerKeyHex, 30*time.Second)
+	conn, err := dial.DialPeerConnection(netStack, TCPPort, peerId, 30*time.Second)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 		return

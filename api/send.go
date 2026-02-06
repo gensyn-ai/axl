@@ -17,14 +17,14 @@ type peerConn interface {
 	io.Closer
 }
 
-var dialPeerConnection = func(netStack *stack.Stack, tcpPort int, peerKeyHex string) (peerConn, error) {
-	return dial.DialPeerConnection(netStack, tcpPort, peerKeyHex, 0*time.Second)
+var dialPeerConnection = func(netStack *stack.Stack, tcpPort int, peerId string) (peerConn, error) {
+	return dial.DialPeerConnection(netStack, tcpPort, peerId, 0*time.Second)
 }
 
 // SendRequest is what Python sends to /send
 type SendRequest struct {
-	DestinationKey string `json:"destination_key"` // Hex-encoded public key
-	Data           []byte `json:"data"`
+	DestinationPeerId string `json:"destination_peer_id"` // Hex-encoded peer ID
+	Data              []byte `json:"data"`
 }
 
 func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
@@ -34,10 +34,10 @@ func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 			return
 		}
 
-		// Get destination key from header (raw binary, no JSON/base64)
-		destKeyHex := r.Header.Get("X-Destination-Key")
-		if destKeyHex == "" {
-			http.Error(w, "Missing X-Destination-Key header", http.StatusBadRequest)
+		// Get destination peer ID from header (raw binary, no JSON/base64)
+		destPeerId := r.Header.Get("X-Destination-Peer-Id")
+		if destPeerId == "" {
+			http.Error(w, "Missing X-Destination-Peer-Id header", http.StatusBadRequest)
 			return
 		}
 
@@ -48,11 +48,11 @@ func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 			return
 		}
 
-		conn, err := dialPeerConnection(netStack, TCPPort, destKeyHex)
+		conn, err := dialPeerConnection(netStack, TCPPort, destPeerId)
 		if err != nil {
 			switch {
-			case errors.Is(err, dial.ErrInvalidPeerKey):
-				http.Error(w, "Invalid destination key", http.StatusBadRequest)
+			case errors.Is(err, dial.ErrInvalidPeerId):
+				http.Error(w, "Invalid destination peer ID", http.StatusBadRequest)
 			case errors.Is(err, dial.ErrDialPeer):
 				http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 			default:

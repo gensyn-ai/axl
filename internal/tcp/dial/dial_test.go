@@ -18,8 +18,8 @@ func TestDialPeerConnectionInvalidHex(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid hex")
 	}
-	if !errors.Is(err, ErrInvalidPeerKey) {
-		t.Errorf("expected ErrInvalidPeerKey, got %v", err)
+	if !errors.Is(err, ErrInvalidPeerId) {
+		t.Errorf("expected ErrInvalidPeerId, got %v", err)
 	}
 }
 
@@ -30,8 +30,8 @@ func TestDialPeerConnectionKeyTooShort(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for short key")
 	}
-	if !errors.Is(err, ErrInvalidPeerKey) {
-		t.Errorf("expected ErrInvalidPeerKey, got %v", err)
+	if !errors.Is(err, ErrInvalidPeerId) {
+		t.Errorf("expected ErrInvalidPeerId, got %v", err)
 	}
 }
 
@@ -42,8 +42,8 @@ func TestDialPeerConnectionKeyTooLong(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for long key")
 	}
-	if !errors.Is(err, ErrInvalidPeerKey) {
-		t.Errorf("expected ErrInvalidPeerKey, got %v", err)
+	if !errors.Is(err, ErrInvalidPeerId) {
+		t.Errorf("expected ErrInvalidPeerId, got %v", err)
 	}
 }
 
@@ -52,8 +52,8 @@ func TestDialPeerConnectionEmptyKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty key")
 	}
-	if !errors.Is(err, ErrInvalidPeerKey) {
-		t.Errorf("expected ErrInvalidPeerKey, got %v", err)
+	if !errors.Is(err, ErrInvalidPeerId) {
+		t.Errorf("expected ErrInvalidPeerId, got %v", err)
 	}
 }
 
@@ -64,14 +64,14 @@ func TestDialPeerConnectionOddLengthHex(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for odd-length hex")
 	}
-	if !errors.Is(err, ErrInvalidPeerKey) {
-		t.Errorf("expected ErrInvalidPeerKey, got %v", err)
+	if !errors.Is(err, ErrInvalidPeerId) {
+		t.Errorf("expected ErrInvalidPeerId, got %v", err)
 	}
 }
 
-func TestErrInvalidPeerKeyMessage(t *testing.T) {
-	if ErrInvalidPeerKey.Error() != "invalid peer key" {
-		t.Errorf("unexpected error message: %s", ErrInvalidPeerKey.Error())
+func TestErrInvalidPeerIdMessage(t *testing.T) {
+	if ErrInvalidPeerId.Error() != "invalid peer ID" {
+		t.Errorf("unexpected error message: %s", ErrInvalidPeerId.Error())
 	}
 }
 
@@ -101,8 +101,8 @@ func TestDialPeerConnectionInvalidHexPatterns(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			if !errors.Is(err, ErrInvalidPeerKey) {
-				t.Errorf("expected ErrInvalidPeerKey, got %v", err)
+			if !errors.Is(err, ErrInvalidPeerId) {
+				t.Errorf("expected ErrInvalidPeerId, got %v", err)
 			}
 		})
 	}
@@ -132,8 +132,8 @@ func TestDialPeerConnectionKeyLengthBoundaries(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			if !errors.Is(err, ErrInvalidPeerKey) {
-				t.Errorf("expected ErrInvalidPeerKey, got %v", err)
+			if !errors.Is(err, ErrInvalidPeerId) {
+				t.Errorf("expected ErrInvalidPeerId, got %v", err)
 			}
 		})
 	}

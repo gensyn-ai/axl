@@ -10,9 +10,9 @@ import (
 
 // RouterRequest is sent to the MCP router
 type RouterRequest struct {
-	Service string          `json:"service"`
-	Request json.RawMessage `json:"request"`
-	FromKey string          `json:"from_key"`
+	Service    string          `json:"service"`
+	Request    json.RawMessage `json:"request"`
+	FromPeerId string          `json:"from_peer_id"`
 }
 
 // RouterResponse is returned by the MCP router
@@ -25,15 +25,15 @@ type RouterResponse struct {
 func ForwardToRouter(
 	service string,
 	request json.RawMessage,
-	fromKey string,
+	fromPeerId string,
 	client *http.Client,
 	routerURL string,
 ) (json.RawMessage, error) {
 	// Build router request
 	routerReq := RouterRequest{
-		Service: service,
-		Request: request,
-		FromKey: fromKey,
+		Service:    service,
+		Request:    request,
+		FromPeerId: fromPeerId,
 	}
 
 	reqBody, err := json.Marshal(routerReq)

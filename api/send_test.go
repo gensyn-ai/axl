@@ -88,7 +88,7 @@ func TestHandleSendMissingDestinationHeader(t *testing.T) {
 func TestHandleSendInvalidDestinationHex(t *testing.T) {
 	handler := HandleSend(7000, nil)
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader("hello"))
-	req.Header.Set("X-Destination-Key", "zzzz")
+	req.Header.Set("X-Destination-Peer-Id", "zzzz")
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -101,7 +101,7 @@ func TestHandleSendInvalidDestinationHex(t *testing.T) {
 func TestHandleSendInvalidKeyLength(t *testing.T) {
 	handler := HandleSend(7000, nil)
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader("hello"))
-	req.Header.Set("X-Destination-Key", "abcd")
+	req.Header.Set("X-Destination-Peer-Id", "abcd")
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -120,7 +120,7 @@ func (f failingReader) Read(_ []byte) (int, error) {
 func TestHandleSendBodyReadError(t *testing.T) {
 	handler := HandleSend(7000, nil)
 	req := httptest.NewRequest(http.MethodPost, "/send", failingReader{})
-	req.Header.Set("X-Destination-Key", validKeyHex())
+	req.Header.Set("X-Destination-Peer-Id", validKeyHex())
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -135,7 +135,7 @@ func TestHandleSendDialError(t *testing.T) {
 	setDialer(t, nil, errors.New("dial failed"))
 
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader("hello"))
-	req.Header.Set("X-Destination-Key", validKeyHex())
+	req.Header.Set("X-Destination-Peer-Id", validKeyHex())
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -151,7 +151,7 @@ func TestHandleSendWriteLengthError(t *testing.T) {
 	setDialer(t, conn, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader("hello"))
-	req.Header.Set("X-Destination-Key", validKeyHex())
+	req.Header.Set("X-Destination-Peer-Id", validKeyHex())
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -167,7 +167,7 @@ func TestHandleSendWriteDataError(t *testing.T) {
 	setDialer(t, conn, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader("hello"))
-	req.Header.Set("X-Destination-Key", validKeyHex())
+	req.Header.Set("X-Destination-Peer-Id", validKeyHex())
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -184,7 +184,7 @@ func TestHandleSendSuccess(t *testing.T) {
 
 	body := []byte("payload")
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader(string(body)))
-	req.Header.Set("X-Destination-Key", validKeyHex())
+	req.Header.Set("X-Destination-Peer-Id", validKeyHex())
 	w := httptest.NewRecorder()
 
 	handler(w, req)

@@ -32,7 +32,7 @@ func TestHandleRecvReturnsMessage(t *testing.T) {
 	t.Cleanup(resetRecvQueue)
 	resetRecvQueue()
 
-	msg := ReceivedMessage{FromKey: "deadbeef", Data: []byte("hello")}
+	msg := ReceivedMessage{FromPeerId: "deadbeef", Data: []byte("hello")}
 	RecvMutex.Lock()
 	RecvQueue = append(RecvQueue, msg)
 	RecvMutex.Unlock()
@@ -52,8 +52,8 @@ func TestHandleRecvReturnsMessage(t *testing.T) {
 		t.Fatalf("failed to read body: %v", err)
 	}
 
-	if got := resp.Header.Get("X-From-Key"); got != msg.FromKey {
-		t.Fatalf("expected X-From-Key %q, got %q", msg.FromKey, got)
+	if got := resp.Header.Get("X-From-Peer-Id"); got != msg.FromPeerId {
+		t.Fatalf("expected X-From-Peer-Id %q, got %q", msg.FromPeerId, got)
 	}
 
 	if string(body) != string(msg.Data) {

@@ -12,7 +12,7 @@ func TestForwardToRouterSuccess(t *testing.T) {
 	// Create a mock router server
 	expectedService := "weather"
 	expectedRequest := json.RawMessage(`{"method":"tools/call"}`)
-	expectedFromKey := "abc123"
+	expectedFromPeerId := "abc123"
 	expectedResponse := json.RawMessage(`{"result":"sunny"}`)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,8 +33,8 @@ func TestForwardToRouterSuccess(t *testing.T) {
 		if req.Service != expectedService {
 			t.Errorf("expected service %s, got %s", expectedService, req.Service)
 		}
-		if req.FromKey != expectedFromKey {
-			t.Errorf("expected from_key %s, got %s", expectedFromKey, req.FromKey)
+		if req.FromPeerId != expectedFromPeerId {
+			t.Errorf("expected from_peer_id %s, got %s", expectedFromPeerId, req.FromPeerId)
 		}
 
 		resp := RouterResponse{
@@ -45,7 +45,7 @@ func TestForwardToRouterSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := ForwardToRouter(expectedService, expectedRequest, expectedFromKey, server.Client(), server.URL)
+	result, err := ForwardToRouter(expectedService, expectedRequest, expectedFromPeerId, server.Client(), server.URL)
 	if err != nil {
 		t.Fatalf("ForwardToRouter failed: %v", err)
 	}
@@ -129,9 +129,9 @@ func TestForwardToRouterEmptyResponse(t *testing.T) {
 
 func TestRouterRequestStructure(t *testing.T) {
 	req := RouterRequest{
-		Service: "weather",
-		Request: json.RawMessage(`{"method":"tools/call"}`),
-		FromKey: "abc123",
+		Service:    "weather",
+		Request:    json.RawMessage(`{"method":"tools/call"}`),
+		FromPeerId: "abc123",
 	}
 
 	data, err := json.Marshal(req)
@@ -147,8 +147,8 @@ func TestRouterRequestStructure(t *testing.T) {
 	if decoded["service"] != "weather" {
 		t.Errorf("expected service weather, got %v", decoded["service"])
 	}
-	if decoded["from_key"] != "abc123" {
-		t.Errorf("expected from_key abc123, got %v", decoded["from_key"])
+	if decoded["from_peer_id"] != "abc123" {
+		t.Errorf("expected from_peer_id abc123, got %v", decoded["from_peer_id"])
 	}
 }
 

@@ -91,7 +91,7 @@ func (m *mockStream) IsAllowed(data []byte, metadata any) bool {
 	return string(data) == string(m.allowedData)
 }
 
-func (m *mockStream) Forward(metadata any, fromKey string) ([]byte, error) {
+func (m *mockStream) Forward(metadata any, fromPeerId string) ([]byte, error) {
 	return m.forwardResult, m.forwardErr
 }
 
@@ -112,7 +112,7 @@ func TestMultiplexerWithMockStream(t *testing.T) {
 	for _, s := range m.sources {
 		msgPtr := m.requestTypes[s.GetID()]()
 		if s.IsAllowed(testData, msgPtr) {
-			resp, err := s.Forward(msgPtr, "testkey")
+			resp, err := s.Forward(msgPtr, "testpeerid")
 			if err != nil {
 				t.Fatalf("Forward error: %v", err)
 			}
@@ -171,7 +171,7 @@ func TestMultiplexerWithMCPStream(t *testing.T) {
 			matched = true
 
 			// Forward the message
-			resp, err := s.Forward(msgPtr, "fromkey123")
+			resp, err := s.Forward(msgPtr, "frompeerid123")
 			if err != nil {
 				t.Fatalf("Forward error: %v", err)
 			}
@@ -234,7 +234,7 @@ func TestMultiplexerWithMCPStreamRouterError(t *testing.T) {
 	for _, s := range m.sources {
 		msgPtr := m.requestTypes[s.GetID()]()
 		if s.IsAllowed(mcpData, msgPtr) {
-			resp, err := s.Forward(msgPtr, "fromkey")
+			resp, err := s.Forward(msgPtr, "frompeerid")
 			if err != nil {
 				t.Fatalf("Forward should not return error directly: %v", err)
 			}

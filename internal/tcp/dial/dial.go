@@ -14,18 +14,18 @@ import (
 )
 
 var (
-	ErrInvalidPeerKey = errors.New("invalid peer key")
-	ErrDialPeer       = errors.New("failed to reach peer")
+	ErrInvalidPeerId = errors.New("invalid peer ID")
+	ErrDialPeer      = errors.New("failed to reach peer")
 )
 
-func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerKeyHex string, timeout time.Duration) (*gonet.TCPConn, error) {
+func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerId string, timeout time.Duration) (*gonet.TCPConn, error) {
 
-	destKeyBytes, err := hex.DecodeString(peerKeyHex)
-	if err != nil || len(destKeyBytes) != 32 {
-		return nil, ErrInvalidPeerKey
+	peerIdBytes, err := hex.DecodeString(peerId)
+	if err != nil || len(peerIdBytes) != 32 {
+		return nil, ErrInvalidPeerId
 	}
 	var keyArr [32]byte
-	copy(keyArr[:], destKeyBytes)
+	copy(keyArr[:], peerIdBytes)
 	destAddr := address.AddrForKey(keyArr[:])
 
 	// Dial the remote peer

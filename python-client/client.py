@@ -28,14 +28,14 @@ def get_topology():
 def recv_msg_via_bridge():
     """
     Poll for received messages from the Go bridge.
-    Returns dict with: from_key, data (raw bytes)
+    Returns dict with: from_peer_id, data (raw bytes)
     """
     try:
         resp = requests.get(f"{BRIDGE_URL}/recv")
         if resp.status_code == 200:
-            # Raw binary response with sender key in header
+            # Raw binary response with sender peer ID in header
             return {
-                'from_key': resp.headers.get('X-From-Key', ''),
+                'from_peer_id': resp.headers.get('X-From-Peer-Id', ''),
                 'data': resp.content  # Raw bytes
             }
         elif resp.status_code == 204:
@@ -51,7 +51,7 @@ def send_msg_via_bridge(dest_key, data):
     Data is raw bytes, sent directly without base64 encoding.
     """
     headers = {
-        'X-Destination-Key': dest_key,
+        'X-Destination-Peer-Id': dest_key,
         'Content-Type': 'application/octet-stream'
     }
     
@@ -144,7 +144,7 @@ def run_test(target_key=None):
             for _ in range(10):
                 msg = recv_msg_via_bridge()
                 if msg:
-                    print(f"Received message from {msg.get('from_key', 'unknown')[:16]}...")
+                    print(f"Received message from {msg.get('from_peer_id', 'unknown')[:16]}...")
                     print(f"Data: {msg['data'] if msg.get('data') else 'empty'}")
                     break
                 time.sleep(1)
@@ -344,7 +344,7 @@ def run_receiver():
         while True:
             msg = recv_msg_via_bridge()
             if msg:
-                print(f"\n[RECV] From: {msg.get('from_key', 'unknown')[:32]}...")
+                print(f"\n[RECV] From: {msg.get('from_peer_id', 'unknown')[:32]}...")
                 data = msg['data'] if msg.get('data') else b''
                 try:
                     decoded = msgpack.unpackb(data, raw=False)
@@ -369,8 +369,8 @@ def run_receiver():
                                 "verified": is_correct,
                                 "timestamp": time.time()
                             }
-                            print(f"       Sending ACK to {msg.get('from_key')[:16]}...")
-                            send_msg_via_bridge(msg.get('from_key'), msgpack.packb(ack_msg, use_bin_type=True))
+                            print(f"       Sending ACK to {msg.get('from_peer_id')[:16]}...")
+                            send_msg_via_bridge(msg.get('from_peer_id'), msgpack.packb(ack_msg, use_bin_type=True))
                             
                     elif msg_type == 'bandwidth_ack':
                         print(f"       ACK Received (Verified: {decoded.get('verified')})")

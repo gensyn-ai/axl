@@ -127,7 +127,7 @@ func TestMCPStreamForwardSuccess(t *testing.T) {
 		Request: json.RawMessage(`{"method":"tools/call"}`),
 	}
 
-	respBytes, err := stream.Forward(mcpMsg, "fromkey123")
+	respBytes, err := stream.Forward(mcpMsg, "frompeerid123")
 	if err != nil {
 		t.Fatalf("Forward failed: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestMCPStreamForwardWrongType(t *testing.T) {
 	stream := NewMCPStream("http://localhost:8080")
 
 	// Pass wrong type (not a pointer to MCPMessage)
-	respBytes, err := stream.Forward("wrong type", "fromkey")
+	respBytes, err := stream.Forward("wrong type", "frompeerid")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestMCPStreamForwardWrongType(t *testing.T) {
 func TestMCPStreamForwardNilMessage(t *testing.T) {
 	stream := NewMCPStream("http://localhost:8080")
 
-	respBytes, err := stream.Forward(nil, "fromkey")
+	respBytes, err := stream.Forward(nil, "frompeerid")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestMCPStreamForwardRouterError(t *testing.T) {
 		Request: json.RawMessage(`{}`),
 	}
 
-	respBytes, err := stream.Forward(mcpMsg, "fromkey123")
+	respBytes, err := stream.Forward(mcpMsg, "frompeerid123")
 	if err != nil {
 		t.Fatalf("Forward should not return error, got: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestMCPStreamForwardRouterConnectionFailure(t *testing.T) {
 		Request: json.RawMessage(`{}`),
 	}
 
-	respBytes, err := stream.Forward(mcpMsg, "fromkey123")
+	respBytes, err := stream.Forward(mcpMsg, "frompeerid123")
 	if err != nil {
 		t.Fatalf("Forward should not return error directly, got: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestMCPStreamForwardNullResponse(t *testing.T) {
 		Request: json.RawMessage(`{}`),
 	}
 
-	respBytes, err := stream.Forward(mcpMsg, "fromkey123")
+	respBytes, err := stream.Forward(mcpMsg, "frompeerid123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -285,9 +285,9 @@ func TestMCPStreamForwardNullResponse(t *testing.T) {
 	}
 }
 
-func TestMCPStreamForwardPreservesFromKey(t *testing.T) {
-	expectedFromKey := "peer123abc"
-	var receivedFromKey string
+func TestMCPStreamForwardPreservesFromPeerId(t *testing.T) {
+	expectedFromPeerId := "peer123abc"
+	var receivedFromPeerId string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req RouterRequest
@@ -295,7 +295,7 @@ func TestMCPStreamForwardPreservesFromKey(t *testing.T) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		receivedFromKey = req.FromKey
+		receivedFromPeerId = req.FromPeerId
 
 		resp := RouterResponse{
 			Response: json.RawMessage(`{}`),
@@ -316,13 +316,13 @@ func TestMCPStreamForwardPreservesFromKey(t *testing.T) {
 		Request: json.RawMessage(`{}`),
 	}
 
-	_, err := stream.Forward(mcpMsg, expectedFromKey)
+	_, err := stream.Forward(mcpMsg, expectedFromPeerId)
 	if err != nil {
 		t.Fatalf("Forward failed: %v", err)
 	}
 
-	if receivedFromKey != expectedFromKey {
-		t.Errorf("expected fromKey %s, got %s", expectedFromKey, receivedFromKey)
+	if receivedFromPeerId != expectedFromPeerId {
+		t.Errorf("expected fromPeerId %s, got %s", expectedFromPeerId, receivedFromPeerId)
 	}
 }
 
@@ -357,7 +357,7 @@ func TestMCPStreamForwardPreservesService(t *testing.T) {
 		Request: json.RawMessage(`{}`),
 	}
 
-	_, err := stream.Forward(mcpMsg, "fromkey")
+	_, err := stream.Forward(mcpMsg, "frompeerid")
 	if err != nil {
 		t.Fatalf("Forward failed: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestMCPStreamForwardPreservesRequest(t *testing.T) {
 		Request: json.RawMessage(expectedRequest),
 	}
 
-	_, err := stream.Forward(mcpMsg, "fromkey")
+	_, err := stream.Forward(mcpMsg, "frompeerid")
 	if err != nil {
 		t.Fatalf("Forward failed: %v", err)
 	}

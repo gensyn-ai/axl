@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-const validPeerKey = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-const invalidHexPeerKey = "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+const validPeerId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+const invalidHexPeerId = "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
 
 func resetMCPSessions(t *testing.T) {
 	t.Helper()
@@ -38,7 +38,7 @@ func TestHandleMCPMethodNotAllowed(t *testing.T) {
 	resetMCPSessions(t)
 	handler := HandleMCP(7000, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/mcp/"+validPeerKey+"/weather", nil)
+	req := httptest.NewRequest(http.MethodGet, "/mcp/"+validPeerId+"/weather", nil)
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -52,7 +52,7 @@ func TestHandleMCPInvalidJSON(t *testing.T) {
 	resetMCPSessions(t)
 	handler := HandleMCP(7000, nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerKey+"/weather", strings.NewReader("not-json"))
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", strings.NewReader("not-json"))
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -67,7 +67,7 @@ func TestHandleMCPNotificationsInitialized(t *testing.T) {
 	handler := HandleMCP(7000, nil)
 
 	body := strings.NewReader(`{"method":"notifications/initialized"}`)
-	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerKey+"/weather", body)
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
 	w := httptest.NewRecorder()
 
 	handler(w, req)
@@ -82,7 +82,7 @@ func TestHandleMCPInvalidSession(t *testing.T) {
 	handler := HandleMCP(7000, nil)
 
 	body := strings.NewReader(`{"method":"call","id":1}`)
-	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerKey+"/weather", body)
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
 	req.Header.Set("Mcp-Session-Id", "missing")
 	w := httptest.NewRecorder()
 
@@ -98,7 +98,7 @@ func TestHandleMCPDialFailure(t *testing.T) {
 	handler := HandleMCP(7000, nil)
 
 	body := strings.NewReader(`{"method":"initialize","id":1}`)
-	req := httptest.NewRequest(http.MethodPost, "/mcp/"+invalidHexPeerKey+"/weather", body)
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+invalidHexPeerId+"/weather", body)
 	w := httptest.NewRecorder()
 
 	handler(w, req)

@@ -6,5 +6,5 @@ type Stream interface {
 	// IsAllowed validates the data for this stream and returns true if allowed.
 	IsAllowed(data []byte, metadata any) bool
 	// Forward processes data using parsed metadata and returns response bytes if successful.
-	Forward(metadata any, fromKey string) ([]byte, error)
+	Forward(metadata any, fromPeerId string) ([]byte, error)
 }

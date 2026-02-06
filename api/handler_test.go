@@ -122,8 +122,8 @@ func TestNewHandlerRecvIntegration(t *testing.T) {
 	// Add a message to the queue
 	RecvMutex.Lock()
 	RecvQueue = append(RecvQueue, ReceivedMessage{
-		FromKey: "testkey123",
-		Data:    []byte("test data"),
+		FromPeerId: "testpeerid123",
+		Data:       []byte("test data"),
 	})
 	RecvMutex.Unlock()
 
@@ -137,10 +137,10 @@ func TestNewHandlerRecvIntegration(t *testing.T) {
 		t.Errorf("expected status 200, got %d", w.Code)
 	}
 
-	// FromKey is returned in the X-From-Key header
-	fromKey := w.Header().Get("X-From-Key")
-	if fromKey != "testkey123" {
-		t.Errorf("expected X-From-Key header 'testkey123', got %s", fromKey)
+	// FromPeerId is returned in the X-From-Peer-Id header
+	fromPeerId := w.Header().Get("X-From-Peer-Id")
+	if fromPeerId != "testpeerid123" {
+		t.Errorf("expected X-From-Peer-Id header 'testpeerid123', got %s", fromPeerId)
 	}
 
 	// Body contains the raw data

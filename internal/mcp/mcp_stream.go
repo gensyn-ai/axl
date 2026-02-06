@@ -33,12 +33,12 @@ func (m *MCPStream) IsAllowed(data []byte, mcpMsg any) bool {
 	return false
 }
 
-func (m *MCPStream) Forward(mcpMsg any, fromKey string) (respBytes []byte, err error) {
+func (m *MCPStream) Forward(mcpMsg any, fromPeerId string) (respBytes []byte, err error) {
 	mcpMsgPtr, ok := mcpMsg.(*api.MCPMessage)
 	if !ok {
 		return nil, nil
 	}
-	respData, err := ForwardToRouter(mcpMsgPtr.Service, mcpMsgPtr.Request, fromKey, m.client, m.routerURL)
+	respData, err := ForwardToRouter(mcpMsgPtr.Service, mcpMsgPtr.Request, fromPeerId, m.client, m.routerURL)
 
 	var mcpResp api.MCPResponse
 	mcpResp.Service = mcpMsgPtr.Service

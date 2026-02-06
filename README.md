@@ -96,7 +96,7 @@ Returns node info and peer/tree state.
 Send data to another node. If the remote node responds (e.g., an MCP request/response), the response is returned directly. Otherwise falls back to a fire-and-forget acknowledgement.
 
 **Headers:**
-- `X-Destination-Key`: Hex-encoded 32-byte public key of destination
+- `X-Destination-Peer-Id`: Hex-encoded 32-byte peer ID (ed25519 public key) of destination
 
 **Body:** Raw binary data (or JSON for MCP requests)
 
@@ -110,7 +110,7 @@ Poll for received messages (non-MCP traffic only). MCP messages are automaticall
 
 **Response:**
 - `204 No Content` if queue is empty
-- `200 OK` with raw binary body and `X-From-Key` header (sender's public key)
+- `200 OK` with raw binary body and `X-From-Peer-Id` header (sender's peer ID)
 
 ## How It Works
 

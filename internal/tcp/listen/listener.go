@@ -169,18 +169,18 @@ func handleTCPConn(conn net.Conn, routerURL string) {
 	remoteAddrStr := conn.RemoteAddr().String()
 	host, _, _ := net.SplitHostPort(remoteAddrStr)
 
-	// Convert Host IPv6 -> PublicKey
-	fromKey := ""
+	// Convert Host IPv6 -> PeerId
+	fromPeerId := ""
 	ip := net.ParseIP(host)
 	if ip != nil {
 		var addrBytes [16]byte
 		copy(addrBytes[:], ip.To16())
 		yggAddr := address.Address(addrBytes)
 		key := yggAddr.GetKey()
-		fromKey = hex.EncodeToString(key)
+		fromPeerId = hex.EncodeToString(key)
 	}
 
-	log.Printf("Connection from peer %s...", fromKey[:16])
+	log.Printf("Connection from peer %s...", fromPeerId[:16])
 
 	// Protocol: Length(4 bytes) + Data
 	mcpStream := mcp.NewMCPStream(routerURL)
@@ -209,7 +209,7 @@ func handleTCPConn(conn net.Conn, routerURL string) {
 			msgPtr := multiplexer.requestTypes[stream.GetID()]()
 			if stream.IsAllowed(dataBuf, msgPtr) {
 				// This is request belongs to this stream
-				respBytes, err := stream.Forward(msgPtr, fromKey)
+				respBytes, err := stream.Forward(msgPtr, fromPeerId)
 				if err != nil {
 					log.Printf("Stream %s forward error: %v", stream.GetID(), err)
 					continue
@@ -225,8 +225,8 @@ func handleTCPConn(conn net.Conn, routerURL string) {
 
 		// Not an stream message - queue it for client applications pulling from /recv
 		msg := api.ReceivedMessage{
-			FromKey: fromKey,
-			Data:    dataBuf,
+			FromPeerId: fromPeerId,
+			Data:       dataBuf,
 		}
 
 		api.RecvMutex.Lock()
