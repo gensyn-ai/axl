@@ -82,6 +82,7 @@ func run() error {
 	apiCfg := defaultAPIConfig()
 	listenAddr := flag.String("listen", "", "Listen address override (optional)")
 	configPath := flag.String("config", defaultConfigPath, "Path to configuration file")
+	a2aURL := flag.String("a2a", "", "A2A server URL (e.g., http://127.0.0.1:9004)")
 	flag.Parse()
 
 	// Create logger
@@ -147,7 +148,10 @@ func run() error {
 
 	// Setup Userspace Network Stack (gVisor)
 	tcpPort := apiCfg.TCPPort
-	listen.SetupNetworkStack(yggCore, tcpPort, routerURL)
+	if *a2aURL != "" {
+		logger.Infof("A2A Server URL: %s", *a2aURL)
+	}
+	listen.SetupNetworkStack(yggCore, tcpPort, routerURL, *a2aURL)
 
 	// Create HTTP Bridge
 	handler := api.NewHandler(yggCore, tcpPort, listen.NetStack)

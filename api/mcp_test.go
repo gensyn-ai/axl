@@ -143,12 +143,12 @@ func TestSendAndReadMCPRequestResponse(t *testing.T) {
 		}
 	}()
 
-	if err := sendMCPRequest(client, expectedPayload); err != nil {
-		t.Fatalf("sendMCPRequest failed: %v", err)
+	if err := WriteLengthPrefixed(client, expectedPayload); err != nil {
+		t.Fatalf("WriteLengthPrefixed failed: %v", err)
 	}
-	resp, err := readMCPResponse(client)
+	resp, err := ReadLengthPrefixed(client)
 	if err != nil {
-		t.Fatalf("readMCPResponse failed: %v", err)
+		t.Fatalf("ReadLengthPrefixed failed: %v", err)
 	}
 	if string(resp) != `{"result":"ok"}` {
 		t.Fatalf("unexpected response %s", resp)

@@ -266,7 +266,7 @@ func TestHandleTCPConnNonMCPMessage(t *testing.T) {
 	go func() {
 		defer close(done)
 		// Use a dummy router URL since MCP won't match
-		handleTCPConn(wrappedServer, "http://localhost:1")
+		handleTCPConn(wrappedServer, "http://localhost:1", "")
 	}()
 
 	// Write message and close to trigger EOF
@@ -314,7 +314,7 @@ func TestHandleTCPConnMultipleMessages(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1")
+		handleTCPConn(wrappedServer, "http://localhost:1", "")
 	}()
 
 	// Send all messages then close
@@ -390,7 +390,7 @@ func TestHandleTCPConnMCPMessageWithResponse(t *testing.T) {
 	handlerDone := make(chan struct{})
 	go func() {
 		defer close(handlerDone)
-		handleTCPConn(wrappedServer, routerServer.URL)
+		handleTCPConn(wrappedServer, routerServer.URL, "")
 	}()
 
 	// Write the MCP message
@@ -446,7 +446,7 @@ func TestHandleTCPConnQueueOverflow(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1")
+		handleTCPConn(wrappedServer, "http://localhost:1", "")
 	}()
 
 	// Send more than 100 messages to test queue overflow
@@ -481,7 +481,7 @@ func TestHandleTCPConnImmediateEOF(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1")
+		handleTCPConn(wrappedServer, "http://localhost:1", "")
 	}()
 
 	// Close immediately
@@ -505,7 +505,7 @@ func TestHandleTCPConnPartialLengthRead(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1")
+		handleTCPConn(wrappedServer, "http://localhost:1", "")
 	}()
 
 	// Write only 2 bytes of the 4-byte length header, then close
@@ -530,7 +530,7 @@ func TestHandleTCPConnPartialDataRead(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1")
+		handleTCPConn(wrappedServer, "http://localhost:1", "")
 	}()
 
 	// Write length header saying 100 bytes, but only send 10

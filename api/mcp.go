@@ -1,11 +1,9 @@
 package api
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -133,14 +131,14 @@ func handleMCPPost(
 	defer conn.Close()
 
 	// Send length-prefixed envelope
-	err = sendMCPRequest(conn, envelopeBytes)
+	err = WriteLengthPrefixed(conn, envelopeBytes)
 	if err != nil {
 		http.Error(w, "Failed to send to peer", http.StatusBadGateway)
 		return
 	}
 
 	// Read the response from the peer
-	respBuf, err := readMCPResponse(conn)
+	respBuf, err := ReadLengthPrefixed(conn)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -176,27 +174,3 @@ func handleMCPPost(
 	w.Write(mcpResp.Response)
 }
 
-func sendMCPRequest(conn net.Conn, envelopeBytes []byte) error {
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(envelopeBytes)))
-	if _, err := conn.Write(lenBuf); err != nil {
-		return fmt.Errorf("failed to send to peer: %w", err)
-	}
-	if _, err := conn.Write(envelopeBytes); err != nil {
-		return fmt.Errorf("failed to send to peer: %w", err)
-	}
-	return nil
-}
-
-func readMCPResponse(conn net.Conn) ([]byte, error) {
-	respLenBuf := make([]byte, 4)
-	if _, err := io.ReadFull(conn, respLenBuf); err != nil {
-		return nil, fmt.Errorf("no response from peer: %w", err)
-	}
-	respLen := binary.BigEndian.Uint32(respLenBuf)
-	respBuf := make([]byte, respLen)
-	if _, err := io.ReadFull(conn, respBuf); err != nil {
-		return nil, fmt.Errorf("failed to read peer response: %w", err)
-	}
-	return respBuf, nil
-}

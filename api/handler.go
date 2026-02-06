@@ -15,5 +15,6 @@ func NewHandler(yggCore *core.Core, tcpPort int, netStack *stack.Stack) http.Han
 	mux.HandleFunc("/send", HandleSend(tcpPort, netStack))
 	mux.HandleFunc("/recv", HandleRecv)
 	mux.HandleFunc("/mcp/", HandleMCP(tcpPort, netStack))
+	mux.HandleFunc("/a2a/", HandleA2A(tcpPort, netStack))
 	return mux
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"example.com/api"
+	"example.com/internal/a2a"
 	"example.com/internal/mcp"
 
 	"github.com/gologme/log"
@@ -29,7 +30,7 @@ var (
 	NetStack *stack.Stack
 )
 
-func SetupNetworkStack(yggCore *core.Core, tcpPort int, routerURL string) {
+func SetupNetworkStack(yggCore *core.Core, tcpPort int, routerURL string, a2aURL string) {
 	// Create ipv6rwc wrapper
 	rwc := ipv6rwc.NewReadWriteCloser(yggCore)
 
@@ -136,10 +137,10 @@ func SetupNetworkStack(yggCore *core.Core, tcpPort int, routerURL string) {
 	})
 
 	// Start TCP Listener
-	go startTCPListener(tcpPort, routerURL)
+	go startTCPListener(tcpPort, routerURL, a2aURL)
 }
 
-func startTCPListener(tcpPort int, routerURL string) {
+func startTCPListener(tcpPort int, routerURL string, a2aURL string) {
 	// Listen on [::]:7000
 	listener, err := gonet.ListenTCP(NetStack, tcpip.FullAddress{
 		NIC:  0,
@@ -158,11 +159,11 @@ func startTCPListener(tcpPort int, routerURL string) {
 			log.Printf("Accept error: %v", err)
 			continue
 		}
-		go handleTCPConn(conn, routerURL)
+		go handleTCPConn(conn, routerURL, a2aURL)
 	}
 }
 
-func handleTCPConn(conn net.Conn, routerURL string) {
+func handleTCPConn(conn net.Conn, routerURL string, a2aURL string) {
 	defer conn.Close()
 
 	// Identify Sender
@@ -186,6 +187,10 @@ func handleTCPConn(conn net.Conn, routerURL string) {
 	mcpStream := mcp.NewMCPStream(routerURL)
 	multiplexer := NewMultiplexer()
 	multiplexer.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
+	if a2aURL != "" {
+		a2aStream := a2a.NewA2AStream(a2aURL)
+		multiplexer.AddSource(a2aStream, func() any { return &api.A2AMessage{} })
+	}
 	for {
 		// Read Length
 		lenBuf := make([]byte, 4)
