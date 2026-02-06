@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"example.com/internal/tcpdial"
+	"example.com/internal/tcp/dial"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
@@ -18,7 +18,7 @@ type peerConn interface {
 }
 
 var dialPeerConnection = func(netStack *stack.Stack, tcpPort int, peerKeyHex string) (peerConn, error) {
-	return tcpdial.DialPeerConnection(netStack, tcpPort, peerKeyHex, 0*time.Second)
+	return dial.DialPeerConnection(netStack, tcpPort, peerKeyHex, 0*time.Second)
 }
 
 // SendRequest is what Python sends to /send
@@ -51,9 +51,9 @@ func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 		conn, err := dialPeerConnection(netStack, TCPPort, destKeyHex)
 		if err != nil {
 			switch {
-			case errors.Is(err, tcpdial.ErrInvalidPeerKey):
+			case errors.Is(err, dial.ErrInvalidPeerKey):
 				http.Error(w, "Invalid destination key", http.StatusBadRequest)
-			case errors.Is(err, tcpdial.ErrDialPeer):
+			case errors.Is(err, dial.ErrDialPeer):
 				http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 			default:
 				http.Error(w, fmt.Sprintf("Dial failed: %v", err), http.StatusInternalServerError)

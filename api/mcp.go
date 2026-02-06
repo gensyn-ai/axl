@@ -13,7 +13,7 @@ import (
 
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 
-	"example.com/internal/tcpdial"
+	"example.com/internal/tcp/dial"
 )
 
 var (
@@ -125,7 +125,7 @@ func handleMCPPost(
 	}
 	envelopeBytes, _ := json.Marshal(envelope)
 
-	conn, err := tcpdial.DialPeerConnection(netStack, TCPPort, peerKeyHex, 30*time.Second)
+	conn, err := dial.DialPeerConnection(netStack, TCPPort, peerKeyHex, 30*time.Second)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 		return

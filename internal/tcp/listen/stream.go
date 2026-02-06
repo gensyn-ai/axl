@@ -1,4 +1,4 @@
-package tcplisten
+package listen
 
 type Stream interface {
 	// GetID returns the stream ID

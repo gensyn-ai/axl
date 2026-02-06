@@ -1,4 +1,4 @@
-package tcplisten
+package listen
 
 type Multiplexer struct {
 	sources      []Stream

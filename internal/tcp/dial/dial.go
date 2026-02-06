@@ -1,4 +1,4 @@
-package tcpdial
+package dial
 
 import (
 	"encoding/hex"

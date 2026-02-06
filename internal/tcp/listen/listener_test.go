@@ -1,4 +1,4 @@
-package tcplisten
+package listen
 
 import (
 	"encoding/binary"
