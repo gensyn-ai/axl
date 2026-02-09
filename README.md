@@ -15,18 +15,19 @@ This project embeds the Yggdrasil network stack in a standalone Go application, 
 
 ```
 ┌────────────────┐       HTTP        ┌─────────────────────────────────────┐
-│  Your App      │◄────────────────►│  client.go                          │
+│  Your App      │◄────────────────►│  node                               │
 │  (Python, etc) │   localhost:9002  │  ┌─────────────┐  ┌──────────────┐  │
 └────────────────┘                   │  │ gVisor TCP  │◄►│ Yggdrasil    │  │
                                      │  │ Stack       │  │ Core         │  │
-                                     │  └─────────────┘  └──────┬───────┘  │
-                                     └─────────────────────────│──────────┘
-                                                               │ TLS/TCP
-                                                               ▼
-                                                      ┌────────────────┐
-                                                      │  Public Peer   │
-                                                      │  (or LAN peer) │
-                                                      └────────────────┘
+┌────────────────┐                   │  └──────┬──────┘  └──────┬───────┘  │
+│  MCP Router    │◄──── stream ──────│─────────┘                │          │
+│  A2A Server    │                   └──────────────────────────│──────────┘
+└────────────────┘                                              │ TLS/TCP
+                                                                ▼
+                                                       ┌────────────────┐
+                                                       │  Public Peer   │
+                                                       │  (or LAN peer) │
+                                                       └────────────────┘
 ```
 
 ## Setup
@@ -40,8 +41,8 @@ git submodule update --init --recursive
 
 ### Build / Run
 ```bash
-cd client
-go run client.go [flags]
+go build -o node ./cmd/node/
+./node -config node-config.json
 ```
 
 ## Usage
@@ -68,19 +69,14 @@ If no addresses are configured, the corresponding streams are disabled.
 
 ### Examples
 
-**Connect to default peer (client mode):**
+**Run with default config:**
 ```bash
-go run client.go
+./node
 ```
 
-**Connect to a specific peer:**
+**Run with a listen address override:**
 ```bash
-go run client.go -peer tls://somenode.example.com:9001
-```
-
-**Run as a listener (server mode):**
-```bash
-go run client.go -listen tls://0.0.0.0:9001
+./node -listen tls://0.0.0.0:9001
 ```
 
 ## HTTP API
@@ -103,83 +99,31 @@ Returns node info and peer/tree state.
 
 ### `POST /send`
 
-Send data to another node. If the remote node responds (e.g., an MCP request/response), the response is returned directly. Otherwise falls back to a fire-and-forget acknowledgement.
+Send data to another node (fire-and-forget). Does not wait for a response.
 
 **Headers:**
 - `X-Destination-Peer-Id`: Hex-encoded 32-byte peer ID (ed25519 public key) of destination
 
-**Body:** Raw binary data (or JSON for MCP requests)
+**Body:** Raw binary data
 
 **Response:**
-- If the remote peer responds: `200 OK` with JSON response body
-- If no response (fire-and-forget): `200 OK` with `X-Sent-Bytes` header
+- `200 OK` with `X-Sent-Bytes` header
 
 ### `GET /recv`
 
-Poll for received messages (non-MCP traffic only). MCP messages are automatically routed to the MCP router.
+Poll for received messages. MCP and A2A messages are automatically routed to their respective servers; only unmatched messages appear here.
 
 **Response:**
 - `204 No Content` if queue is empty
 - `200 OK` with raw binary body and `X-From-Peer-Id` header (sender's peer ID)
 
-## How It Works
+### `POST /mcp/{peer_id}/{service}`
 
-1. **Yggdrasil Core** — Generates a keypair, derives an IPv6 address (`200::/7`), and connects to peers
-2. **gVisor Stack** — Provides a userspace TCP/IP stack bound to the Yggdrasil IPv6 address
-3. **TCP Listener** — Listens on port 7000 (internal) for incoming messages from other nodes
-4. **HTTP Bridge** — Exposes send/recv/topology endpoints on localhost for your application
-
-When you send data, it:
-1. Converts the destination public key → Yggdrasil IPv6 address
-2. Opens a TCP connection through the gVisor stack
-3. Sends a length-prefixed message
-4. Waits for a response (with 30s timeout) and returns it to the caller
-
-When you receive data:
-1. The TCP listener accepts connections from the overlay
-2. The multiplexer checks each registered stream:
-   - `"service"` field → MCP request → forwarded to the MCP router
-   - `"a2a": true` → A2A request → forwarded to the A2A server
-3. The response is sent back to the remote peer over the same TCP connection
-4. Unmatched messages are queued and returned via `/recv`
-
-### Stream Multiplexing
-
-Incoming TCP messages are routed by a multiplexer based on their content:
-
-- Messages with a `"service"` field → **MCP stream** → MCP router
-- Messages with `"a2a": true` → **A2A stream** → A2A server
-- Everything else → generic recv queue (polled via `/recv`)
-
-### MCP Routing
-
-Incoming messages with a `"service"` field are recognized as MCP requests:
-
-```json
-{
-  "service": "weather",
-  "request": {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {...}}
-}
-```
-
-These are forwarded to the MCP router (default `http://127.0.0.1:9003/route`), which routes them to the appropriate registered MCP server.
-
-### A2A Routing
-
-Incoming messages with `"a2a": true` are forwarded to the local A2A server:
-
-```json
-{
-  "a2a": true,
-  "request": {"jsonrpc": "2.0", "method": "message/send", ...}
-}
-```
-
-The `request` field contains a raw A2A JSON-RPC payload. The A2A server processes it and the response is sent back to the remote peer.
+Send an MCP request to a remote peer's service. The request body is a raw JSON-RPC payload. The node wraps it in an MCP envelope, sends it over Yggdrasil TCP, and returns the JSON-RPC response.
 
 ### `POST /a2a/{peer_id}`
 
-Send an A2A request to a remote peer. The request body is a raw A2A JSON-RPC payload, which gets wrapped in a transport envelope, sent over Yggdrasil TCP, and the response is returned.
+Send an A2A request to a remote peer. The request body is a raw A2A JSON-RPC payload. The node wraps it in an A2A envelope, sends it over Yggdrasil TCP, and returns the JSON-RPC response.
 
 **Example — list tools via A2A:**
 ```bash
@@ -218,6 +162,34 @@ curl -X POST http://127.0.0.1:9002/a2a/{peer_id} \
 ```
 
 Replace `{peer_id}` with the hex-encoded public key of the remote peer (64 hex characters). The `messageId` is a client-assigned correlation ID. The text part must be a JSON-stringified MCP request matching the format the A2A server expects.
+
+## How It Works
+
+1. **Yggdrasil Core** — Generates a keypair, derives an IPv6 address (`200::/7`), and connects to peers
+2. **gVisor Stack** — Provides a userspace TCP/IP stack bound to the Yggdrasil IPv6 address
+3. **TCP Listener** — Listens on port 7000 (internal) for incoming messages from other nodes
+4. **HTTP Bridge** — Exposes `/send`, `/recv`, `/topology`, `/mcp/`, and `/a2a/` endpoints on localhost
+
+**Outbound (`/send`):** Sends a length-prefixed message to a remote peer. Fire-and-forget, no response is read back.
+
+**Outbound (`/mcp/{peer_id}/{service}` and `/a2a/{peer_id}`):** Wraps the request in a transport envelope, dials the remote peer, sends the envelope, waits for a response (30s timeout), unwraps the response, and returns it to the caller.
+
+**Inbound (TCP listener):** Accepts connections from the overlay and reads length-prefixed messages. The multiplexer checks each registered stream:
+1. `"service"` field → MCP request → forwarded to the local MCP router
+2. `"a2a": true` → A2A request → forwarded to the local A2A server
+3. Unmatched → queued for `/recv`
+
+The stream's response is sent back to the remote peer over the same TCP connection.
+
+### Wire Format
+
+All TCP messages use a length-prefixed envelope:
+
+| Envelope | Discriminator | Forwarded to |
+|----------|---------------|-------------|
+| `{"service":"...","request":{...}}` | `service` field present | MCP router |
+| `{"a2a":true,"request":{...}}` | `a2a` field is `true` | A2A server |
+| anything else | — | `/recv` queue |
 
 ## Submodules
 
