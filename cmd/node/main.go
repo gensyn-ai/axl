@@ -27,48 +27,56 @@ var (
 )
 
 const (
-	defaultTCPPort     = 7000
-	defaultAPIPort     = 9002
-	defaultRouterHost  = "http://127.0.0.1"
-	defaultBrideHost   = "127.0.0.1" // must exclude http prefix, must only be the host literal
-	defaultRouterPort  = 9003
-	defaultConfigPath  = "node-config.json"
-	defaultListenUsage = "Custom listen address (optional)"
+	defaultTCPPort       = 7000
+	defaultAPIPort       = 9002
+	defaultMcpRouterPort = 9003
+	defaultA2APort       = 9004
+	defaultMcpRouterHost = ""          // if hosting locally use http://127.0.0.1
+	defaultBrideHost     = "127.0.0.1" // must exclude http prefix, must only be the host literal for ListenAndServe
+	defaultA2AHost       = ""          // if hosting locally use http://127.0.0.1
+	defaultConfigPath    = "node-config.json"
 )
 
 type ApiConfig struct {
-	ApiPort    int    `json:"api_port"`
-	RouterAddr string `json:"router_addr"`
-	RouterPort int    `json:"router_port"`
-	BridgeAddr string `json:"bridge_addr"`
-	TCPPort    int    `json:"tcp_port"`
+	TCPPort       int    `json:"tcp_port"`
+	ApiPort       int    `json:"api_port"`
+	McpRouterPort int    `json:"router_port"`
+	A2APort       int    `json:"a2a_port"`
+	McpRouterAddr string `json:"router_addr"`
+	BridgeAddr    string `json:"bridge_addr"`
+	A2AAddr       string `json:"a2a_addr"`
 }
 
 func defaultAPIConfig() ApiConfig {
 	return ApiConfig{
-		ApiPort:    defaultAPIPort,
-		RouterAddr: defaultRouterHost,
-		RouterPort: defaultRouterPort,
-		BridgeAddr: defaultBrideHost,
-		TCPPort:    defaultTCPPort,
+		TCPPort:       defaultTCPPort,
+		ApiPort:       defaultAPIPort,
+		McpRouterPort: defaultMcpRouterPort,
+		A2APort:       defaultA2APort,
+		McpRouterAddr: defaultMcpRouterHost,
+		BridgeAddr:    defaultBrideHost,
+		A2AAddr:       defaultA2AHost,
 	}
 }
 
 func applyOverrides(base *ApiConfig, ov ApiConfig) {
+	if ov.TCPPort != 0 {
+		base.TCPPort = ov.TCPPort
+	}
 	if ov.ApiPort != 0 {
 		base.ApiPort = ov.ApiPort
 	}
-	if ov.RouterAddr != "" {
-		base.RouterAddr = ov.RouterAddr
+	if ov.McpRouterPort != 0 {
+		base.McpRouterPort = ov.McpRouterPort
 	}
-	if ov.RouterPort != 0 {
-		base.RouterPort = ov.RouterPort
+	if ov.McpRouterAddr != "" {
+		base.McpRouterAddr = ov.McpRouterAddr
 	}
 	if ov.BridgeAddr != "" {
 		base.BridgeAddr = ov.BridgeAddr
 	}
-	if ov.TCPPort != 0 {
-		base.TCPPort = ov.TCPPort
+	if ov.A2AAddr != "" {
+		base.A2AAddr = ov.A2AAddr
 	}
 }
 
@@ -82,7 +90,6 @@ func run() error {
 	apiCfg := defaultAPIConfig()
 	listenAddr := flag.String("listen", "", "Listen address override (optional)")
 	configPath := flag.String("config", defaultConfigPath, "Path to configuration file")
-	a2aURL := flag.String("a2a", "", "A2A server URL (e.g., http://127.0.0.1:9004)")
 	flag.Parse()
 
 	// Create logger
@@ -114,13 +121,6 @@ func run() error {
 		applyOverrides(&apiCfg, overrides)
 	}
 
-	routerHost := strings.TrimRight(apiCfg.RouterAddr, "/")
-	if routerHost == "" {
-		routerHost = defaultRouterHost
-	}
-	routerURL = fmt.Sprintf("%s:%d/route", routerHost, apiCfg.RouterPort)
-	logger.Infof("MCP Router URL: %s", routerURL)
-
 	// Start the Yggdrasil core
 	options := []core.SetupOption{}
 	listens := append([]string{}, cfg.Listen...)
@@ -148,10 +148,20 @@ func run() error {
 
 	// Setup Userspace Network Stack (gVisor)
 	tcpPort := apiCfg.TCPPort
-	if *a2aURL != "" {
-		logger.Infof("A2A Server URL: %s", *a2aURL)
+
+	mcpRouterHost := strings.TrimRight(apiCfg.McpRouterAddr, "/")
+	mcpRouterUrl := ""
+	if mcpRouterHost != "" {
+		mcpRouterUrl = fmt.Sprintf("%s:%d/route", mcpRouterHost, apiCfg.McpRouterPort)
+		logger.Infof("MCP Router URL: %s", mcpRouterUrl)
 	}
-	listen.SetupNetworkStack(yggCore, tcpPort, routerURL, *a2aURL)
+
+	a2aUrl := ""
+	if apiCfg.A2AAddr != "" {
+		a2aUrl = fmt.Sprintf("%s:%d", apiCfg.A2AAddr, apiCfg.A2APort)
+		logger.Infof("A2A Server URL: %s", a2aUrl)
+	}
+	listen.SetupNetworkStack(yggCore, tcpPort, mcpRouterUrl, a2aUrl)
 
 	// Create HTTP Bridge
 	handler := api.NewHandler(yggCore, tcpPort, listen.NetStack)
