@@ -57,7 +57,11 @@ func HandleA2A(tcpPort int, netStack *stack.Stack) http.HandlerFunc {
 			A2A:     true,
 			Request: body,
 		}
-		envelopeBytes, _ := json.Marshal(envelope)
+		envelopeBytes, err := json.Marshal(envelope)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to marshal A2A envelope: %v", err), http.StatusInternalServerError)
+			return
+		}
 
 		// Dial the remote peer
 		conn, err := dial.DialPeerConnection(netStack, tcpPort, peerId, 30*time.Second)

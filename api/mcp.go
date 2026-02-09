@@ -121,8 +121,11 @@ func handleMCPPost(
 		Service: service,
 		Request: body,
 	}
-	envelopeBytes, _ := json.Marshal(envelope)
-
+	envelopeBytes, err := json.Marshal(envelope)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to marshal MCP envelope: %v", err), http.StatusInternalServerError)
+		return
+	}
 	conn, err := dial.DialPeerConnection(netStack, TCPPort, peerId, 30*time.Second)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
@@ -173,4 +176,3 @@ func handleMCPPost(
 	}
 	w.Write(mcpResp.Response)
 }
-
