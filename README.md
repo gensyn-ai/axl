@@ -32,13 +32,6 @@ This project embeds the Yggdrasil network stack in a standalone Go application, 
 
 ## Setup
 
-### Clone with Submodules
-```bash
-git clone --recurse-submodules <repo-url>
-# Or if already cloned:
-git submodule update --init --recursive
-```
-
 ### Build / Run
 ```bash
 go build -o node ./cmd/node/
@@ -165,7 +158,7 @@ Replace `{peer_id}` with the hex-encoded public key of the remote peer (64 hex c
 
 ## How It Works
 
-1. **Yggdrasil Core** — Generates a keypair, derives an IPv6 address (`200::/7`), and connects to peers
+1. **Yggdrasil Core** — Generates a keypair (if not provided in config), derives an IPv6 address (`200::/7`), and connects to peers
 2. **gVisor Stack** — Provides a userspace TCP/IP stack bound to the Yggdrasil IPv6 address
 3. **TCP Listener** — Listens on port 7000 (internal) for incoming messages from other nodes
 4. **HTTP Bridge** — Exposes `/send`, `/recv`, `/topology`, `/mcp/`, and `/a2a/` endpoints on localhost
