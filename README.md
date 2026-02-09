@@ -50,11 +50,21 @@ go run client.go [flags]
 
 | Flag | Description | Example |
 |------|-------------|---------|
-| `-peer` | Peer URI to connect to | `-peer tls://1.2.3.4:9001` |
 | `-listen` | Listen address for incoming peers | `-listen tls://0.0.0.0:9001` |
-| `-router` | MCP router URL | `-router http://127.0.0.1:9003` |
+| `-config` | Path to configuration file | `-config node-config.json` |
 
-If no flags are provided, connects to a default public peer and routes MCP traffic to `http://127.0.0.1:9003`.
+Addresses for the MCP router and A2A server can also be configured via `node-config.json`:
+
+```json
+{
+  "router_addr": "http://127.0.0.1",
+  "router_port": 9003,
+  "a2a_addr": "http://127.0.0.1",
+  "a2a_port": 9004
+}
+```
+
+If no addresses are configured, the corresponding streams are disabled.
 
 ### Examples
 
@@ -127,9 +137,19 @@ When you send data, it:
 
 When you receive data:
 1. The TCP listener accepts connections from the overlay
-2. If the message has a `"service"` field, it is treated as an MCP request and forwarded to the MCP router via `POST /route`
-3. The router's response is sent back to the remote peer over the same TCP connection
-4. Non-MCP messages are queued and returned via `/recv`
+2. The multiplexer checks each registered stream:
+   - `"service"` field → MCP request → forwarded to the MCP router
+   - `"a2a": true` → A2A request → forwarded to the A2A server
+3. The response is sent back to the remote peer over the same TCP connection
+4. Unmatched messages are queued and returned via `/recv`
+
+### Stream Multiplexing
+
+Incoming TCP messages are routed by a multiplexer based on their content:
+
+- Messages with a `"service"` field → **MCP stream** → MCP router
+- Messages with `"a2a": true` → **A2A stream** → A2A server
+- Everything else → generic recv queue (polled via `/recv`)
 
 ### MCP Routing
 
@@ -142,7 +162,62 @@ Incoming messages with a `"service"` field are recognized as MCP requests:
 }
 ```
 
-These are forwarded to the MCP router (default `http://127.0.0.1:9003/route`), which routes them to the appropriate registered MCP server. See [demcp](./client/) for the router and server implementation.
+These are forwarded to the MCP router (default `http://127.0.0.1:9003/route`), which routes them to the appropriate registered MCP server.
+
+### A2A Routing
+
+Incoming messages with `"a2a": true` are forwarded to the local A2A server:
+
+```json
+{
+  "a2a": true,
+  "request": {"jsonrpc": "2.0", "method": "message/send", ...}
+}
+```
+
+The `request` field contains a raw A2A JSON-RPC payload. The A2A server processes it and the response is sent back to the remote peer.
+
+### `POST /a2a/{peer_id}`
+
+Send an A2A request to a remote peer. The request body is a raw A2A JSON-RPC payload, which gets wrapped in a transport envelope, sent over Yggdrasil TCP, and the response is returned.
+
+**Example — list tools via A2A:**
+```bash
+curl -X POST http://127.0.0.1:9002/a2a/{peer_id} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "message/send",
+    "id": 1,
+    "params": {
+      "message": {
+        "role": "user",
+        "parts": [{"kind": "text", "text": "{\"service\":\"weather\",\"request\":{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1,\"params\":{}}}"}],
+        "messageId": "test123"
+      }
+    }
+  }'
+```
+
+**Example — call a tool via A2A:**
+```bash
+curl -X POST http://127.0.0.1:9002/a2a/{peer_id} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "message/send",
+    "id": 1,
+    "params": {
+      "message": {
+        "role": "user",
+        "parts": [{"kind": "text", "text": "{\"service\":\"weather\",\"request\":{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"id\":1,\"params\":{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Dublin\"}}}}"}],
+        "messageId": "test123"
+      }
+    }
+  }'
+```
+
+Replace `{peer_id}` with the hex-encoded public key of the remote peer (64 hex characters). The `messageId` is a client-assigned correlation ID. The text part must be a JSON-stringified MCP request matching the format the A2A server expects.
 
 ## Submodules
 
