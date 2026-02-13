@@ -154,64 +154,30 @@ def run_convergecast(local_data: Dict, session_id: str = "default", timeout: flo
 
 
 if __name__ == "__main__":
-    import sys
+    import argparse
     
-    if len(sys.argv) > 1 and sys.argv[1] == "topo":
-        # Show topology
-        topo = get_topology()
-        if topo:
-            tree = derive_tree_position(topo)
-            print(f"Our key: {tree.our_key}")
-            print(f"Parent: {tree.parent or 'None (ROOT)'}")
-            print(f"Children: {tree.children}")
-            print(f"Is root: {tree.is_root}")
-            print(f"Is leaf: {tree.is_leaf}")
-    else:
-        # Run convergecast
-        # Parse args for local data
-        local_data = {}
-        session_id = "default"
-        timeout = 30.0
-        
-        args = sys.argv[1:]
-        i = 0
-        while i < len(args):
-            if args[i] == "--session" and i + 1 < len(args):
-                session_id = args[i + 1]
-                i += 2
-            elif args[i] == "--timeout" and i + 1 < len(args):
-                timeout = float(args[i + 1])
-                i += 2
-            elif "=" in args[i]:
-                key, value = args[i].split("=", 1)
-                try:
-                    value = int(value)
-                except ValueError:
-                    try:
-                        value = float(value)
-                    except ValueError:
-                        pass
-                local_data[key] = value
-                i += 1
-            else:
-                i += 1
-        
-        # Default local data if none provided
-        if not local_data:
-            topo = get_topology()
-            if topo:
-                local_data = {topo["our_public_key"][:8]: 1}
-        
-        result = run_convergecast(local_data, session_id, timeout)
-        
-        if result:
-            print()
-            print("=" * 60)
-            print("CONVERGECAST RESULT")
-            print("=" * 60)
-            print(f"  Success: {result['success']}")
-            print(f"  Is Root: {result['is_root']}")
-            print(f"  Received from: {len(result['received_from'])} children")
-            print(f"  Missing: {result['missing']}")
-            print(f"  Aggregated data: {result['data']}")
-            print("=" * 60)
+    parser = argparse.ArgumentParser(description="Convergecast over Yggdrasil network")
+    parser.add_argument("--session", default="default", help="Session ID for this convergecast")
+    parser.add_argument("--timeout", type=float, default=30.0, help="Timeout in seconds for waiting for children")
+    
+    args = parser.parse_args()
+    
+    # Default local data
+    local_data = {}
+    topo = get_topology()
+    if topo:
+        local_data = {topo["our_public_key"][:8]: 1}
+    
+    result = run_convergecast(local_data, args.session, args.timeout)
+    
+    if result:
+        print()
+        print("=" * 60)
+        print("CONVERGECAST RESULT")
+        print("=" * 60)
+        print(f"  Success: {result['success']}")
+        print(f"  Is Root: {result['is_root']}")
+        print(f"  Received from: {len(result['received_from'])} children")
+        print(f"  Missing: {result['missing']}")
+        print(f"  Aggregated data: {result['data']}")
+        print("=" * 60)

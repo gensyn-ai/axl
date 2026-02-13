@@ -1,3 +1,11 @@
+"""
+This is a simple Python client that demonstrates how to send and recv pytorch tensors over the Yggdrasil mesh network.
+It may be run in three modes:
+- recv: receive messages and print them
+- tensor: send a pytorch tensor to a target node
+- bandwidth: send a pytorch tensor to a target node and measure the bandwidth
+if running tensor or bandwidth demo, a target peerId must be provided as second arg, and the target node must be running in recv mode.
+"""
 import time
 import requests
 import torch
@@ -7,7 +15,7 @@ import io
 # Configuration
 BRIDGE_URL = "http://127.0.0.1:9002"
 
-# Target can be specified as public key (hex) - get from topology
+# Target can be specified as peerId (hex) - get from topology
 TARGET_KEY = None  # Will be set from topology or manually
 
 
@@ -47,7 +55,7 @@ def recv_msg_via_bridge():
 
 def send_msg_via_bridge(dest_key, data):
     """
-    Send data to a destination identified by public key (hex string).
+    Send data to a destination identified by peerId (hex string).
     Data is raw bytes, sent directly without base64 encoding.
     """
     headers = {
@@ -102,7 +110,7 @@ def print_topology():
     print("YGGDRASIL NODE TOPOLOGY")
     print("="*60)
     print(f"Our IPv6:      {topo['our_ipv6']}")
-    print(f"Our Public Key: {topo['our_public_key']}")
+    print(f"Our peerId: {topo['our_public_key']}")
     
     print(f"\nPeers ({len(topo.get('peers', []))}):")
     for p in topo.get('peers', []):
@@ -119,52 +127,6 @@ def print_topology():
     
     print("="*60 + "\n")
     return topo
-
-
-def run_test(target_key=None):
-    """
-    Run a simple test - fetch topology and optionally send a message.
-    """
-    print("Checking Topology...")
-    topo = print_topology()
-    
-    if not topo:
-        return
-    
-    # If no target specified, try to use first peer
-    if target_key is None:
-        peers = topo.get('peers', [])
-        up_peers = [p for p in peers if p.get('up') and p.get('public_key')]
-        if up_peers:
-            target_key = up_peers[0]['public_key']
-            print(f"Using first connected peer as target: {target_key[:16]}...")
-        else:
-            print("No connected peers to send to. Waiting for incoming messages...")
-            # Poll for messages
-            for _ in range(10):
-                msg = recv_msg_via_bridge()
-                if msg:
-                    print(f"Received message from {msg.get('from_peer_id', 'unknown')[:16]}...")
-                    print(f"Data: {msg['data'] if msg.get('data') else 'empty'}")
-                    break
-                time.sleep(1)
-            return
-    
-    # Send a test message
-    test_data = msgpack.packb({
-        "type": "hello",
-        "from": topo['our_public_key'],
-        "timestamp": time.time()
-    }, use_bin_type=True)
-    
-    print(f"Sending {len(test_data)} bytes to {target_key[:16]}...")
-    result = send_msg_via_bridge(target_key, test_data)
-    
-    if result:
-        print(f"Send result: {result}")
-    else:
-        print("Send failed or no response")
-
 
 def run_tensor_test(target_key=None):
     """
@@ -184,7 +146,7 @@ def run_tensor_test(target_key=None):
             target_key = up_peers[0]['public_key']
             print(f"Using first connected peer: {target_key[:16]}...")
         else:
-            print("No connected peers. Run with a target public key.")
+            print("No connected peers. Run with a target peerId.")
             return
     
     # Create the tensor
@@ -229,7 +191,7 @@ def run_bandwidth_test(target_key=None):
             target_key = up_peers[0]['public_key']
             print(f"Using first connected peer: {target_key[:16]}...")
         else:
-            print("No connected peers. Run with a target public key.")
+            print("No connected peers. Run with a target peerId.")
             return
 
     # Warmup phase - send a small tensor to initialize connections
@@ -384,19 +346,29 @@ def run_receiver():
 
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "recv":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Yggdrasil Python Client")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    
+    # recv command
+    subparsers.add_parser("recv", help="Receive messages and print them")
+    
+    # tensor command
+    tensor_parser = subparsers.add_parser("tensor", help="Send a pytorch tensor to a target node")
+    tensor_parser.add_argument("target", nargs="?", help="Target peerId (optional, defaults to first connected peer)")
+    
+    # bandwidth command
+    bw_parser = subparsers.add_parser("bandwidth", help="Send a pytorch tensor and measure bandwidth")
+    bw_parser.add_argument("target", nargs="?", help="Target peerId (optional, defaults to first connected peer)")
+    
+    args = parser.parse_args()
+    
+    if args.command == "recv":
         run_receiver()
-    elif len(sys.argv) > 1 and sys.argv[1] == "tensor":
-        # Tensor test - optional target key as second arg
-        target = sys.argv[2] if len(sys.argv) > 2 else None
-        run_tensor_test(target)
-    elif len(sys.argv) > 1 and sys.argv[1] == "bandwidth":
-        # Bandwidth test
-        target = sys.argv[2] if len(sys.argv) > 2 else None
-        run_bandwidth_test(target)
-    elif len(sys.argv) > 1:
-        # Assume argument is target public key
-        run_test(sys.argv[1])
+    elif args.command == "tensor":
+        run_tensor_test(args.target)
+    elif args.command == "bandwidth":
+        run_bandwidth_test(args.target)
     else:
-        run_test()
+        parser.print_help()

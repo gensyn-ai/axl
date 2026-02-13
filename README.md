@@ -35,6 +35,7 @@ This project embeds the Yggdrasil network stack in a standalone Go application, 
 ### Build / Run
 ```bash
 go build -o node ./cmd/node/
+openssl genpkey -algorithm ed25519 -out private.pem # optional
 ./node -config node-config.json
 ```
 
