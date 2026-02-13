@@ -26,8 +26,19 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 )
 
+const (
+	// MaxConcurrentConns limits the number of simultaneous TCP connections from peers.
+	MaxConcurrentConns = 128
+	// ConnReadTimeout is the deadline for reading a complete length-prefixed message.
+	ConnReadTimeout = 60 * time.Second
+	// ConnIdleTimeout is how long a connection can sit idle before being closed.
+	ConnIdleTimeout = 5 * time.Minute
+)
+
 var (
 	NetStack *stack.Stack
+	// connSem limits concurrent TCP connections.
+	connSem = make(chan struct{}, MaxConcurrentConns)
 )
 
 func SetupNetworkStack(yggCore *core.Core, tcpPort int, routerURL string, a2aURL string) {
@@ -159,7 +170,17 @@ func startTCPListener(tcpPort int, routerURL string, a2aURL string) {
 			log.Printf("Accept error: %v", err)
 			continue
 		}
-		go handleTCPConn(conn, routerURL, a2aURL)
+		select {
+		case connSem <- struct{}{}:
+			go func() {
+				defer func() { <-connSem }()
+				handleTCPConn(conn, routerURL, a2aURL)
+			}()
+		default:
+			log.Printf("Connection limit reached (%d), rejecting connection from %s",
+				MaxConcurrentConns, conn.RemoteAddr())
+			conn.Close()
+		}
 	}
 }
 
@@ -192,6 +213,9 @@ func handleTCPConn(conn net.Conn, routerURL string, a2aURL string) {
 		multiplexer.AddSource(a2aStream, func() any { return &api.A2AMessage{} })
 	}
 	for {
+		// Idle timeout: close if no new message arrives within the window
+		conn.SetReadDeadline(time.Now().Add(ConnIdleTimeout))
+
 		// Read Length
 		lenBuf := make([]byte, 4)
 		if _, err := io.ReadFull(conn, lenBuf); err != nil {
@@ -206,6 +230,9 @@ func handleTCPConn(conn net.Conn, routerURL string, a2aURL string) {
 				length, fromPeerId[:16], api.MaxMessageSize)
 			return
 		}
+
+		// Message read timeout: once we have the length, the full payload must arrive promptly
+		conn.SetReadDeadline(time.Now().Add(ConnReadTimeout))
 
 		// Read Data
 		dataBuf := make([]byte, length)
