@@ -2,13 +2,11 @@ package main
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"example.com/api"
 	"example.com/internal/tcp/listen"
@@ -20,89 +18,7 @@ import (
 
 var (
 	yggCore *core.Core
-
-	// MCP Router URL - all MCP requests are forwarded here (set via flag)
-	routerURL  string
-	httpClient = &http.Client{Timeout: 30 * time.Second}
 )
-
-const (
-	defaultTCPPort        = 7000
-	defaultAPIPort        = 9002
-	defaultMcpRouterPort  = 9003
-	defaultA2APort        = 9004
-	defaultMcpRouterHost  = ""          // if hosting locally use http://127.0.0.1
-	defaultBrideHost      = "127.0.0.1" // must exclude http prefix, must only be the host literal for ListenAndServe
-	defaultA2AHost        = ""          // if hosting locally use http://127.0.0.1
-	defaultConfigPath      = "node-config.json"
-	defaultMaxMessageSize  = 16 * 1024 * 1024 // 16 MB
-	defaultMaxConcConns    = 128
-	defaultConnReadTimeout = 60  // seconds
-	defaultConnIdleTimeout = 300 // seconds
-)
-
-type ApiConfig struct {
-	TCPPort        int    `json:"tcp_port"`
-	ApiPort        int    `json:"api_port"`
-	McpRouterPort  int    `json:"router_port"`
-	A2APort        int    `json:"a2a_port"`
-	McpRouterAddr  string `json:"router_addr"`
-	BridgeAddr     string `json:"bridge_addr"`
-	A2AAddr        string `json:"a2a_addr"`
-	MaxMessageSize int `json:"max_message_size"`
-	MaxConcConns   int `json:"max_concurrent_conns"`
-	ConnReadTimeout int `json:"conn_read_timeout_secs"`
-	ConnIdleTimeout int `json:"conn_idle_timeout_secs"`
-}
-
-func defaultAPIConfig() ApiConfig {
-	return ApiConfig{
-		TCPPort:        defaultTCPPort,
-		ApiPort:        defaultAPIPort,
-		McpRouterPort:  defaultMcpRouterPort,
-		A2APort:        defaultA2APort,
-		McpRouterAddr:  defaultMcpRouterHost,
-		BridgeAddr:     defaultBrideHost,
-		A2AAddr:        defaultA2AHost,
-		MaxMessageSize:  defaultMaxMessageSize,
-		MaxConcConns:    defaultMaxConcConns,
-		ConnReadTimeout: defaultConnReadTimeout,
-		ConnIdleTimeout: defaultConnIdleTimeout,
-	}
-}
-
-func applyOverrides(base *ApiConfig, ov ApiConfig) {
-	if ov.TCPPort != 0 {
-		base.TCPPort = ov.TCPPort
-	}
-	if ov.ApiPort != 0 {
-		base.ApiPort = ov.ApiPort
-	}
-	if ov.McpRouterPort != 0 {
-		base.McpRouterPort = ov.McpRouterPort
-	}
-	if ov.McpRouterAddr != "" {
-		base.McpRouterAddr = ov.McpRouterAddr
-	}
-	if ov.BridgeAddr != "" {
-		base.BridgeAddr = ov.BridgeAddr
-	}
-	if ov.A2AAddr != "" {
-		base.A2AAddr = ov.A2AAddr
-	}
-	if ov.MaxMessageSize != 0 {
-		base.MaxMessageSize = ov.MaxMessageSize
-	}
-	if ov.MaxConcConns != 0 {
-		base.MaxConcConns = ov.MaxConcConns
-	}
-	if ov.ConnReadTimeout != 0 {
-		base.ConnReadTimeout = ov.ConnReadTimeout
-	}
-	if ov.ConnIdleTimeout != 0 {
-		base.ConnIdleTimeout = ov.ConnIdleTimeout
-	}
-}
 
 func main() {
 	if err := run(); err != nil {
@@ -111,10 +27,15 @@ func main() {
 }
 
 func run() error {
-	apiCfg := defaultAPIConfig()
 	listenAddr := flag.String("listen", "", "Listen address override (optional)")
 	configPath := flag.String("config", defaultConfigPath, "Path to configuration file")
 	flag.Parse()
+
+	// Load API configuration
+	apiCfg, err := LoadAPIConfig(*configPath)
+	if err != nil {
+		return err
+	}
 
 	// Create logger
 	logger := log.New(os.Stdout, "[ygg] ", 0)
@@ -135,21 +56,12 @@ func run() error {
 	logger.Infof("Loaded Yggdrasil config from %s", *configPath)
 	cfg.IfName = "none" // Required for userspace mode
 
-	// Create API configuration overrides
-	configBytes, err := os.ReadFile(*configPath)
-	if err != nil {
-		return fmt.Errorf("read config %s: %w", *configPath, err)
-	}
-	var overrides ApiConfig
-	if err := json.Unmarshal(configBytes, &overrides); err == nil {
-		applyOverrides(&apiCfg, overrides)
-	}
-
 	// Apply security limits
-	api.MaxMessageSize = uint32(apiCfg.MaxMessageSize)
-	listen.MaxConcurrentConns = apiCfg.MaxConcConns
-	listen.ConnReadTimeout = time.Duration(apiCfg.ConnReadTimeout) * time.Second
-	listen.ConnIdleTimeout = time.Duration(apiCfg.ConnIdleTimeout) * time.Second
+	limits := apiCfg.ToSecurityLimits()
+	api.MaxMessageSize = limits.MaxMessageSize
+	listen.MaxConcurrentConns = limits.MaxConcConns
+	listen.ConnReadTimeout = limits.ConnReadTimeout
+	listen.ConnIdleTimeout = limits.ConnIdleTimeout
 	logger.Infof("Max message size: %d bytes", api.MaxMessageSize)
 	logger.Infof("Max concurrent connections: %d", listen.MaxConcurrentConns)
 	logger.Infof("Connection read timeout: %s", listen.ConnReadTimeout)
