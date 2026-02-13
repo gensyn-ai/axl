@@ -242,36 +242,37 @@ func handleTCPConn(conn net.Conn, routerURL string, a2aURL string) {
 		}
 
 		// Use stream multiplexing for server applications (MCP), like HTTP/2
+		handled := false
 		for _, stream := range multiplexer.sources {
 			msgPtr := multiplexer.requestTypes[stream.GetID()]()
 			if stream.IsAllowed(dataBuf, msgPtr) {
-				// This is request belongs to this stream
 				respBytes, err := stream.Forward(msgPtr, fromPeerId)
 				if err != nil {
 					log.Printf("Stream %s forward error: %v", stream.GetID(), err)
-					continue
-				}
-				if respBytes != nil {
+				} else if respBytes != nil {
 					if err := sendResponse(conn, respBytes); err != nil {
 						log.Printf("Stream %s failed to send response: %v", stream.GetID(), err)
 					}
 				}
-				continue
+				handled = true
+				break
 			}
 		}
 
-		// Not an stream message - queue it for client applications pulling from /recv
-		msg := api.ReceivedMessage{
-			FromPeerId: fromPeerId,
-			Data:       dataBuf,
-		}
+		// Only queue for /recv if no stream handled the message
+		if !handled {
+			msg := api.ReceivedMessage{
+				FromPeerId: fromPeerId,
+				Data:       dataBuf,
+			}
 
-		api.RecvMutex.Lock()
-		if len(api.RecvQueue) >= 100 {
-			api.RecvQueue = api.RecvQueue[1:]
+			api.RecvMutex.Lock()
+			if len(api.RecvQueue) >= 100 {
+				api.RecvQueue = api.RecvQueue[1:]
+			}
+			api.RecvQueue = append(api.RecvQueue, msg)
+			api.RecvMutex.Unlock()
 		}
-		api.RecvQueue = append(api.RecvQueue, msg)
-		api.RecvMutex.Unlock()
 	}
 }
 
