@@ -201,6 +201,11 @@ func handleTCPConn(conn net.Conn, routerURL string, a2aURL string) {
 			return
 		}
 		length := binary.BigEndian.Uint32(lenBuf)
+		if length > api.MaxMessageSize {
+			log.Printf("Message size %d from peer %s exceeds maximum %d, closing connection",
+				length, fromPeerId[:16], api.MaxMessageSize)
+			return
+		}
 
 		// Read Data
 		dataBuf := make([]byte, length)

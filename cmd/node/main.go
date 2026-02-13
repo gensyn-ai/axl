@@ -27,35 +27,38 @@ var (
 )
 
 const (
-	defaultTCPPort       = 7000
-	defaultAPIPort       = 9002
-	defaultMcpRouterPort = 9003
-	defaultA2APort       = 9004
-	defaultMcpRouterHost = ""          // if hosting locally use http://127.0.0.1
-	defaultBrideHost     = "127.0.0.1" // must exclude http prefix, must only be the host literal for ListenAndServe
-	defaultA2AHost       = ""          // if hosting locally use http://127.0.0.1
-	defaultConfigPath    = "node-config.json"
+	defaultTCPPort        = 7000
+	defaultAPIPort        = 9002
+	defaultMcpRouterPort  = 9003
+	defaultA2APort        = 9004
+	defaultMcpRouterHost  = ""          // if hosting locally use http://127.0.0.1
+	defaultBrideHost      = "127.0.0.1" // must exclude http prefix, must only be the host literal for ListenAndServe
+	defaultA2AHost        = ""          // if hosting locally use http://127.0.0.1
+	defaultConfigPath     = "node-config.json"
+	defaultMaxMessageSize = 16 * 1024 * 1024 // 16 MB
 )
 
 type ApiConfig struct {
-	TCPPort       int    `json:"tcp_port"`
-	ApiPort       int    `json:"api_port"`
-	McpRouterPort int    `json:"router_port"`
-	A2APort       int    `json:"a2a_port"`
-	McpRouterAddr string `json:"router_addr"`
-	BridgeAddr    string `json:"bridge_addr"`
-	A2AAddr       string `json:"a2a_addr"`
+	TCPPort        int    `json:"tcp_port"`
+	ApiPort        int    `json:"api_port"`
+	McpRouterPort  int    `json:"router_port"`
+	A2APort        int    `json:"a2a_port"`
+	McpRouterAddr  string `json:"router_addr"`
+	BridgeAddr     string `json:"bridge_addr"`
+	A2AAddr        string `json:"a2a_addr"`
+	MaxMessageSize int    `json:"max_message_size"`
 }
 
 func defaultAPIConfig() ApiConfig {
 	return ApiConfig{
-		TCPPort:       defaultTCPPort,
-		ApiPort:       defaultAPIPort,
-		McpRouterPort: defaultMcpRouterPort,
-		A2APort:       defaultA2APort,
-		McpRouterAddr: defaultMcpRouterHost,
-		BridgeAddr:    defaultBrideHost,
-		A2AAddr:       defaultA2AHost,
+		TCPPort:        defaultTCPPort,
+		ApiPort:        defaultAPIPort,
+		McpRouterPort:  defaultMcpRouterPort,
+		A2APort:        defaultA2APort,
+		McpRouterAddr:  defaultMcpRouterHost,
+		BridgeAddr:     defaultBrideHost,
+		A2AAddr:        defaultA2AHost,
+		MaxMessageSize: defaultMaxMessageSize,
 	}
 }
 
@@ -77,6 +80,9 @@ func applyOverrides(base *ApiConfig, ov ApiConfig) {
 	}
 	if ov.A2AAddr != "" {
 		base.A2AAddr = ov.A2AAddr
+	}
+	if ov.MaxMessageSize != 0 {
+		base.MaxMessageSize = ov.MaxMessageSize
 	}
 }
 
@@ -120,6 +126,10 @@ func run() error {
 	if err := json.Unmarshal(configBytes, &overrides); err == nil {
 		applyOverrides(&apiCfg, overrides)
 	}
+
+	// Apply max message size
+	api.MaxMessageSize = uint32(apiCfg.MaxMessageSize)
+	logger.Infof("Max message size: %d bytes", api.MaxMessageSize)
 
 	// Start the Yggdrasil core
 	options := []core.SetupOption{}
