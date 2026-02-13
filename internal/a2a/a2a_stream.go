@@ -3,6 +3,7 @@ package a2a
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"example.com/api"
 )
@@ -14,7 +15,7 @@ type A2AStream struct {
 }
 
 func NewA2AStream(a2aURL string) *A2AStream {
-	return &A2AStream{ID: "a2a", client: &http.Client{}, a2aURL: a2aURL}
+	return &A2AStream{ID: "a2a", client: &http.Client{Timeout: 30 * time.Second}, a2aURL: a2aURL}
 }
 
 func (a *A2AStream) GetID() string {

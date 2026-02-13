@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"example.com/api"
 )
@@ -15,7 +16,7 @@ type MCPStream struct {
 }
 
 func NewMCPStream(routerURL string) *MCPStream {
-	return &MCPStream{ID: "mcp", client: &http.Client{}, routerURL: routerURL}
+	return &MCPStream{ID: "mcp", client: &http.Client{Timeout: 30 * time.Second}, routerURL: routerURL}
 }
 
 func (m *MCPStream) GetID() string {
