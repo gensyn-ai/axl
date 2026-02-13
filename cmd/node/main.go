@@ -34,8 +34,11 @@ const (
 	defaultMcpRouterHost  = ""          // if hosting locally use http://127.0.0.1
 	defaultBrideHost      = "127.0.0.1" // must exclude http prefix, must only be the host literal for ListenAndServe
 	defaultA2AHost        = ""          // if hosting locally use http://127.0.0.1
-	defaultConfigPath     = "node-config.json"
-	defaultMaxMessageSize = 16 * 1024 * 1024 // 16 MB
+	defaultConfigPath      = "node-config.json"
+	defaultMaxMessageSize  = 16 * 1024 * 1024 // 16 MB
+	defaultMaxConcConns    = 128
+	defaultConnReadTimeout = 60  // seconds
+	defaultConnIdleTimeout = 300 // seconds
 )
 
 type ApiConfig struct {
@@ -46,7 +49,10 @@ type ApiConfig struct {
 	McpRouterAddr  string `json:"router_addr"`
 	BridgeAddr     string `json:"bridge_addr"`
 	A2AAddr        string `json:"a2a_addr"`
-	MaxMessageSize int    `json:"max_message_size"`
+	MaxMessageSize int `json:"max_message_size"`
+	MaxConcConns   int `json:"max_concurrent_conns"`
+	ConnReadTimeout int `json:"conn_read_timeout_secs"`
+	ConnIdleTimeout int `json:"conn_idle_timeout_secs"`
 }
 
 func defaultAPIConfig() ApiConfig {
@@ -58,7 +64,10 @@ func defaultAPIConfig() ApiConfig {
 		McpRouterAddr:  defaultMcpRouterHost,
 		BridgeAddr:     defaultBrideHost,
 		A2AAddr:        defaultA2AHost,
-		MaxMessageSize: defaultMaxMessageSize,
+		MaxMessageSize:  defaultMaxMessageSize,
+		MaxConcConns:    defaultMaxConcConns,
+		ConnReadTimeout: defaultConnReadTimeout,
+		ConnIdleTimeout: defaultConnIdleTimeout,
 	}
 }
 
@@ -83,6 +92,15 @@ func applyOverrides(base *ApiConfig, ov ApiConfig) {
 	}
 	if ov.MaxMessageSize != 0 {
 		base.MaxMessageSize = ov.MaxMessageSize
+	}
+	if ov.MaxConcConns != 0 {
+		base.MaxConcConns = ov.MaxConcConns
+	}
+	if ov.ConnReadTimeout != 0 {
+		base.ConnReadTimeout = ov.ConnReadTimeout
+	}
+	if ov.ConnIdleTimeout != 0 {
+		base.ConnIdleTimeout = ov.ConnIdleTimeout
 	}
 }
 
@@ -127,9 +145,15 @@ func run() error {
 		applyOverrides(&apiCfg, overrides)
 	}
 
-	// Apply max message size
+	// Apply security limits
 	api.MaxMessageSize = uint32(apiCfg.MaxMessageSize)
+	listen.MaxConcurrentConns = apiCfg.MaxConcConns
+	listen.ConnReadTimeout = time.Duration(apiCfg.ConnReadTimeout) * time.Second
+	listen.ConnIdleTimeout = time.Duration(apiCfg.ConnIdleTimeout) * time.Second
 	logger.Infof("Max message size: %d bytes", api.MaxMessageSize)
+	logger.Infof("Max concurrent connections: %d", listen.MaxConcurrentConns)
+	logger.Infof("Connection read timeout: %s", listen.ConnReadTimeout)
+	logger.Infof("Connection idle timeout: %s", listen.ConnIdleTimeout)
 
 	// Start the Yggdrasil core
 	options := []core.SetupOption{}

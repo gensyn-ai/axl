@@ -26,22 +26,24 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 )
 
-const (
+var (
+	NetStack *stack.Stack
+
 	// MaxConcurrentConns limits the number of simultaneous TCP connections from peers.
 	MaxConcurrentConns = 128
 	// ConnReadTimeout is the deadline for reading a complete length-prefixed message.
 	ConnReadTimeout = 60 * time.Second
 	// ConnIdleTimeout is how long a connection can sit idle before being closed.
 	ConnIdleTimeout = 5 * time.Minute
-)
 
-var (
-	NetStack *stack.Stack
-	// connSem limits concurrent TCP connections.
-	connSem = make(chan struct{}, MaxConcurrentConns)
+	// connSem limits concurrent TCP connections. Initialized in SetupNetworkStack.
+	connSem chan struct{}
 )
 
 func SetupNetworkStack(yggCore *core.Core, tcpPort int, routerURL string, a2aURL string) {
+	// Initialize connection semaphore with configured limit
+	connSem = make(chan struct{}, MaxConcurrentConns)
+
 	// Create ipv6rwc wrapper
 	rwc := ipv6rwc.NewReadWriteCloser(yggCore)
 
