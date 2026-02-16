@@ -40,7 +40,7 @@ var (
 	connSem chan struct{}
 )
 
-func SetupNetworkStack(yggCore *core.Core, tcpPort int, routerURL string, a2aURL string) {
+func SetupNetworkStack(yggCore *core.Core, tcpPort int, mcpRouterUrl string, a2aURL string) {
 	// Initialize connection semaphore with configured limit
 	connSem = make(chan struct{}, MaxConcurrentConns)
 
@@ -150,10 +150,10 @@ func SetupNetworkStack(yggCore *core.Core, tcpPort int, routerURL string, a2aURL
 	})
 
 	// Start TCP Listener
-	go startTCPListener(tcpPort, routerURL, a2aURL)
+	go startTCPListener(tcpPort, mcpRouterUrl, a2aURL)
 }
 
-func startTCPListener(tcpPort int, routerURL string, a2aURL string) {
+func startTCPListener(tcpPort int, mcpRouterUrl string, a2aURL string) {
 	// Listen on [::]:7000
 	listener, err := gonet.ListenTCP(NetStack, tcpip.FullAddress{
 		NIC:  0,
@@ -176,7 +176,7 @@ func startTCPListener(tcpPort int, routerURL string, a2aURL string) {
 		case connSem <- struct{}{}:
 			go func() {
 				defer func() { <-connSem }()
-				handleTCPConn(conn, routerURL, a2aURL)
+				handleTCPConn(conn, mcpRouterUrl, a2aURL)
 			}()
 		default:
 			log.Printf("Connection limit reached (%d), rejecting connection from %s",
@@ -186,7 +186,7 @@ func startTCPListener(tcpPort int, routerURL string, a2aURL string) {
 	}
 }
 
-func handleTCPConn(conn net.Conn, routerURL string, a2aURL string) {
+func handleTCPConn(conn net.Conn, mcpRouterUrl string, a2aURL string) {
 	defer conn.Close()
 
 	// Identify Sender
@@ -207,7 +207,7 @@ func handleTCPConn(conn net.Conn, routerURL string, a2aURL string) {
 	log.Printf("Connection from peer %s...", fromPeerId[:16])
 
 	// Protocol: Length(4 bytes) + Data
-	mcpStream := mcp.NewMCPStream(routerURL)
+	mcpStream := mcp.NewMCPStream(mcpRouterUrl)
 	multiplexer := NewMultiplexer()
 	multiplexer.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
 	if a2aURL != "" {
