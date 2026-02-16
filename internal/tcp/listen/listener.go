@@ -207,9 +207,11 @@ func handleTCPConn(conn net.Conn, mcpRouterUrl string, a2aURL string) {
 	log.Printf("Connection from peer %s...", fromPeerId[:16])
 
 	// Protocol: Length(4 bytes) + Data
-	mcpStream := mcp.NewMCPStream(mcpRouterUrl)
 	multiplexer := NewMultiplexer()
-	multiplexer.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
+	if mcpRouterUrl != "" {
+		mcpStream := mcp.NewMCPStream(mcpRouterUrl)
+		multiplexer.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
+	}
 	if a2aURL != "" {
 		a2aStream := a2a.NewA2AStream(a2aURL)
 		multiplexer.AddSource(a2aStream, func() any { return &api.A2AMessage{} })
