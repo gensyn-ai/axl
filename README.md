@@ -185,6 +185,111 @@ All TCP messages use a length-prefixed envelope:
 | `{"a2a":true,"request":{...}}` | `a2a` field is `true` | A2A server |
 | anything else | — | `/recv` queue |
 
+## Integrations (Python)
+
+The `integrations/` directory contains the Python services that run alongside the Go node. These handle the application-level protocols (MCP routing and A2A) while the Go node handles the network transport.
+
+```
+integrations/
+  mcp_routing/
+    mcp_router.py        # MCP request router (:9003)
+  a2a_serving/
+    a2a_server.py        # A2A protocol server (:9004)
+    a2a_test_client.py   # Test client (local + remote modes)
+  pyproject.toml
+```
+
+### Install
+
+```bash
+cd integrations
+pip install -e .
+```
+
+### MCP Router
+
+The router accepts MCP JSON-RPC requests and forwards them to registered MCP service backends. MCP servers register themselves at startup via `POST /register`.
+
+```bash
+python -m mcp_routing.mcp_router --port 9003
+```
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /route` | Forward a request to a registered service |
+| `POST /register` | Register an MCP service (`{"name": "...", "endpoint": "..."}`) |
+| `POST /deregister` | Remove a registered service |
+| `GET /services` | List registered services |
+
+### A2A Server
+
+Sits in front of the MCP router and exposes registered MCP services as A2A skills using the [A2A protocol](https://github.com/google/A2A). Any A2A-compatible client can talk to it.
+
+```bash
+python -m a2a_serving.a2a_server --port 9004 --router http://127.0.0.1:9003
+```
+
+The server auto-discovers skills from the router's `/services` endpoint and advertises them in its agent card at `/.well-known/agent.json`.
+
+### A2A Test Client
+
+A test client that supports two modes:
+
+**Local mode** — sends directly to a local A2A server (useful for development):
+```bash
+python -m a2a_serving.a2a_test_client --service weather --method tools/list
+```
+
+**Remote mode** — routes through the Yggdrasil network to a remote peer's A2A server:
+```bash
+python -m a2a_serving.a2a_test_client \
+  --remote --peer-id <64-char-hex-public-key> \
+  --service weather --method tools/list
+```
+
+The output is JSON and can be piped to `jq`:
+```bash
+python -m a2a_serving.a2a_test_client --remote --peer-id <peer_id> --service weather | jq .
+```
+
+### Running a Two-Node Setup
+
+**Remote machine** (serves MCP tools over Yggdrasil):
+```bash
+# 1. Start the node
+./node -config node-config.json
+
+# 2. Start the MCP router
+python -m mcp_routing.mcp_router
+
+# 3. Start your MCP service(s) and register them with the router
+
+# 4. Start the A2A server
+python -m a2a_serving.a2a_server
+```
+
+**Local machine** (sends requests):
+```bash
+# 1. Start the node (connects to the same Yggdrasil peers)
+./node -config node-config.json
+
+# 2. Get the remote node's public key from its /topology endpoint
+curl http://localhost:9002/topology | jq .our_public_key
+
+# 3. Send a request to the remote peer
+python -m a2a_serving.a2a_test_client \
+  --remote --peer-id <remote-public-key> \
+  --service weather --method tools/list
+```
+
+### Tests
+
+```bash
+cd integrations
+pip install -e ".[test]"
+pytest
+```
+
 ## Submodules
 
 - **yggdrasil-go**: Official Yggdrasil implementation (https://github.com/yggdrasil-network/yggdrasil-go)

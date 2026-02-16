@@ -12,6 +12,12 @@ dependencies = [
     "click>=8.1.8",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -23,6 +29,6 @@ packages = ["a2a_serving", "mcp_routing"]
 asyncio_mode = "auto"
 
 [project.scripts]
-a2a-test-client = "a2a_serving.a2a_test_client:main"
+a2a-test-client = "a2a_serving.a2a_test_client:run"
 mcp-router = "mcp_routing.mcp_router:main"
 a2a-server = "a2a_serving.a2a_server:main"
