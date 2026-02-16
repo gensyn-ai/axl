@@ -101,6 +101,9 @@ func TestA2AStreamIsAllowed(t *testing.T) {
 func TestA2AStreamForwardSuccess(t *testing.T) {
 	expectedResponse := json.RawMessage(`{"jsonrpc":"2.0","result":{"id":"task-123"},"id":1}`)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-From-Peer-Id") != "frompeerid123" {
+			t.Errorf("expected X-From-Peer-Id frompeerid123, got %s", r.Header.Get("X-From-Peer-Id"))
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(expectedResponse)
 	}))

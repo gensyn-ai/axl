@@ -38,7 +38,7 @@ func (a *A2AStream) Forward(a2aMsg any, fromPeerId string) (respBytes []byte, er
 	if !ok {
 		return nil, nil
 	}
-	respData, err := ForwardToA2A(a2aMsgPtr.Request, a.client, a.a2aURL)
+	respData, err := ForwardToA2A(a2aMsgPtr.Request, fromPeerId, a.client, a.a2aURL)
 
 	var a2aResp api.A2AResponse
 	a2aResp.A2A = true

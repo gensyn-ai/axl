@@ -11,11 +11,21 @@ import (
 // ForwardToA2A forwards a raw A2A JSON-RPC request to the A2A server
 func ForwardToA2A(
 	request json.RawMessage,
+	fromPeerId string,
 	client *http.Client,
 	a2aURL string,
 ) (json.RawMessage, error) {
 	// Send raw JSON-RPC request directly to the A2A server
-	resp, err := client.Post(a2aURL, "application/json", bytes.NewReader(request))
+	req, err := http.NewRequest("POST", a2aURL, bytes.NewReader(request))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if fromPeerId != "" {
+		req.Header.Set("X-From-Peer-Id", fromPeerId)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to contact a2a server: %w", err)
 	}

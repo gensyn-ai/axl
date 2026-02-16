@@ -18,6 +18,9 @@ func TestForwardToA2ASuccess(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("expected application/json, got %s", r.Header.Get("Content-Type"))
 		}
+		if r.Header.Get("X-From-Peer-Id") != "peer-abc123" {
+			t.Errorf("expected X-From-Peer-Id peer-abc123, got %s", r.Header.Get("X-From-Peer-Id"))
+		}
 
 		var req map[string]interface{}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -35,7 +38,7 @@ func TestForwardToA2ASuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := ForwardToA2A(expectedRequest, server.Client(), server.URL)
+	result, err := ForwardToA2A(expectedRequest, "peer-abc123", server.Client(), server.URL)
 	if err != nil {
 		t.Fatalf("ForwardToA2A failed: %v", err)
 	}
@@ -45,8 +48,24 @@ func TestForwardToA2ASuccess(t *testing.T) {
 	}
 }
 
+func TestForwardToA2ANoFromPeerId(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-From-Peer-Id") != "" {
+			t.Errorf("expected no X-From-Peer-Id header, got %s", r.Header.Get("X-From-Peer-Id"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"jsonrpc":"2.0","result":{},"id":1}`))
+	}))
+	defer server.Close()
+
+	_, err := ForwardToA2A(json.RawMessage(`{}`), "", server.Client(), server.URL)
+	if err != nil {
+		t.Fatalf("ForwardToA2A failed: %v", err)
+	}
+}
+
 func TestForwardToA2AConnectionFailure(t *testing.T) {
-	_, err := ForwardToA2A(json.RawMessage(`{}`), http.DefaultClient, "http://localhost:1")
+	_, err := ForwardToA2A(json.RawMessage(`{}`), "peer-abc", http.DefaultClient, "http://localhost:1")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -66,7 +85,7 @@ func TestForwardToA2AErrorResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := ForwardToA2A(json.RawMessage(`{}`), server.Client(), server.URL)
+	result, err := ForwardToA2A(json.RawMessage(`{}`), "peer-abc", server.Client(), server.URL)
 	if err != nil {
 		t.Fatalf("ForwardToA2A failed: %v", err)
 	}
