@@ -1,14 +1,14 @@
 """Test client for the A2A server, supporting both local and remote modes.
 
 Local mode (default): sends directly to a local A2A server using the A2A SDK.
-Remote mode: sends through the local yggdrasil node to a remote peer's A2A server.
+Remote mode: sends through the local Gensyn node to a remote peer's A2A server.
 
 Usage:
     # Local mode - hit A2A server directly
     python a2a_test_client.py --service weather --method tools/list
     python a2a_test_client.py --url http://localhost:9004 --service weather
 
-    # Remote mode - route through yggdrasil network
+    # Remote mode - route through Gensyn network
     python a2a_test_client.py --remote --peer-id <REMOTE_PEER_ID> --service weather
     python a2a_test_client.py --remote --peer-id <REMOTE_PEER_ID> --node-url http://localhost:9002
 """
@@ -85,7 +85,7 @@ async def run_local(base_url: str, service: str, method: str):
 
 
 async def run_remote(node_url: str, peer_id: str, service: str, method: str):
-    """Send an A2A request to a remote peer via the local yggdrasil node."""
+    """Send an A2A request to a remote peer via the local Gensyn node."""
 
     mcp_request = build_mcp_request(service, method)
 
@@ -107,7 +107,7 @@ async def run_remote(node_url: str, peer_id: str, service: str, method: str):
 
     # POST to the local node's /a2a/{peer_id} endpoint.
     # The node wraps this in {"a2a": true, "request": ...}, sends it
-    # over Yggdrasil TCP to the remote peer, and returns the unwrapped response.
+    # over the Gensyn Network to the remote peer, and returns the unwrapped response.
     url = f"{node_url}/a2a/{peer_id}"
     logger.info(f"Sending A2A request to remote peer {peer_id[:16]}... via {node_url}")
     logger.info(f"Service: {service}, Method: {method}")
@@ -130,12 +130,12 @@ async def run_remote(node_url: str, peer_id: str, service: str, method: str):
 def run():
     """Entry point."""
     parser = argparse.ArgumentParser(
-        description="Test A2A client — supports local and remote (yggdrasil) modes"
+        description="Test A2A client — supports local and remote modes"
     )
     parser.add_argument(
         "--remote",
         action="store_true",
-        help="Route request through yggdrasil network to a remote peer",
+        help="Route request through Gensyn network to a remote peer",
     )
     parser.add_argument(
         "--peer-id",
@@ -147,7 +147,7 @@ def run():
         "--node-url",
         type=str,
         default="http://localhost:9002",
-        help="Local yggdrasil node API URL (default: http://localhost:9002). Used with --remote",
+        help="Local Gensyn node API URL (default: http://localhost:9002). Used with --remote",
     )
     parser.add_argument(
         "--url",
