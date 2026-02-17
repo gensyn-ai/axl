@@ -38,7 +38,7 @@ func run() error {
 	}
 
 	// Create logger
-	logger := log.New(os.Stdout, "[ygg] ", 0)
+	logger := log.New(os.Stdout, "[node] ", 0)
 	logger.EnableLevel("info")
 	logger.EnableLevel("warn")
 	logger.EnableLevel("error")
@@ -53,7 +53,7 @@ func run() error {
 	if _, err := cfg.ReadFrom(file); err != nil {
 		return fmt.Errorf("parse config %s: %w", *configPath, err)
 	}
-	logger.Infof("Loaded Yggdrasil config from %s", *configPath)
+	logger.Infof("Loaded node config from %s", *configPath)
 	cfg.IfName = "none" // Required for userspace mode
 
 	// Apply security limits
@@ -88,7 +88,7 @@ func run() error {
 	}
 	defer yggCore.Stop()
 
-	logger.Infof("Yggdrasil Userspace Node Started!")
+	logger.Infof("Gensyn Node Started!")
 	logger.Infof("Our IPv6: %s", yggCore.Address().String())
 	logger.Infof("Our Public Key: %s", hex.EncodeToString(yggCore.PublicKey()))
 
