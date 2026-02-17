@@ -29,6 +29,5 @@ packages = ["a2a_serving", "mcp_routing"]
 asyncio_mode = "auto"
 
 [project.scripts]
-a2a-test-client = "a2a_serving.a2a_test_client:run"
 mcp-router = "mcp_routing.mcp_router:main"
 a2a-server = "a2a_serving.a2a_server:main"
