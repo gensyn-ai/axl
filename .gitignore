@@ -29,7 +29,3 @@ go.work
 # OS
 .DS_Store
 Thumbs.db
-
-# Compiled binaries
-client/client
-server/server
