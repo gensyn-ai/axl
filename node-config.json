@@ -4,7 +4,5 @@
     "tls://34.46.48.224:9001",
     "tls://136.111.135.206:9001"
   ],
-  "Listen": [],
-  "max_message_size": 524288000,
-  "conn_read_timeout_secs": 600  
+  "Listen": []
 }
