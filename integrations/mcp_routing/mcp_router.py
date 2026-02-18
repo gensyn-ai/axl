@@ -76,6 +76,7 @@ async def handle_route(request: web.Request) -> web.Response:
                 json=mcp_request,
                 headers={
                     "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream", # required for MCP servers
                     "X-From-Peer-Id": from_peer_id,
                     "X-Service": service_name,
                 },
