@@ -101,6 +101,15 @@ Exposes registered MCP services as [A2A](https://github.com/google/A2A) skills. 
 python -m a2a_serving.a2a_server --port 9004 --router http://127.0.0.1:9003
 ```
 
+The a2a server may be reached across the Gensyn network using the peerId of the node running the server.  A `Get` will return the `/.well-known/agent-card.json` file, and a `POST` will route the request to the appropriate MCP service.
+```HTTP
+GET /a2a/<peerId>
+```
+
+```HTTP
+POST /a2a/<peerId>
+```
+
 ## A2A Test Client
 
 Located at `examples/python-client/a2a_client.py`. Supports two modes:

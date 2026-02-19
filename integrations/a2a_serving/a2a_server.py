@@ -210,6 +210,12 @@ class MCPRouterAgentExecutor(AgentExecutor):
         raise Exception("Cancel not supported for MCP requests")
 
 
+async def get_peer_id() -> str:
+    """Get the peer ID of the current node."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get("http://127.0.0.1:9002/topology")
+        return response.json()["our_public_key"]
+
 async def discover_skills_from_router(router_url: str) -> list[AgentSkill]:
     """Auto-discover skills from the router's /services endpoint.
 
@@ -249,7 +255,7 @@ async def create_agent_card(
     host: str,
     port: int,
     router_url: str,
-    name: str = "deMCP A2A Agent",
+    name: str = "MCP Router A2A Agent",
 ) -> AgentCard:
     """Create the agent card with auto-discovered skills."""
     skills = await discover_skills_from_router(router_url)
@@ -268,10 +274,12 @@ async def create_agent_card(
             )
         ]
 
+    peer_id = await get_peer_id()
+    
     return AgentCard(
         name=name,
-        description="A2A agent that proxies requests to MCP services via the deMCP router",
-        url=f"http://{host}:{port}/",
+        description="A2A agent that proxies requests to MCP services via the Gensyn node router",
+        url=f"/a2a/{peer_id}",
         version="1.0.0",
         default_input_modes=["text", "application/json"],
         default_output_modes=["text", "application/json"],
@@ -305,7 +313,7 @@ async def run_server(host: str, port: int, router_url: str):
     )
 
     logger.info(f"Starting A2A server on http://{host}:{port}")
-    logger.info(f"Agent card available at http://{host}:{port}/.well-known/agent.json")
+    logger.info(f"Agent card available at http://{host}:{port}/.well-known/agent-card.json")
     logger.info(f"Forwarding MCP requests to router at {router_url}")
 
     # Run with uvicorn
@@ -321,7 +329,7 @@ async def run_server(host: str, port: int, router_url: str):
 
 def main():
     """Entry point."""
-    parser = argparse.ArgumentParser(description="deMCP A2A Server")
+    parser = argparse.ArgumentParser(description="MCP Router A2A Server")
     parser.add_argument(
         "--host",
         type=str,

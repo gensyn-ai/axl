@@ -15,8 +15,9 @@ import (
 
 // A2AMessage is the envelope for A2A requests over Yggdrasil TCP
 type A2AMessage struct {
-	A2A     bool            `json:"a2a"`
-	Request json.RawMessage `json:"request"` // full A2A JSON-RPC payload
+	A2A       bool            `json:"a2a"`
+	AgentCard bool            `json:"agent_card,omitempty"` // if true, fetch the remote agent card instead of forwarding a JSON-RPC request
+	Request   json.RawMessage `json:"request"`              // full A2A JSON-RPC payload
 }
 
 // A2AResponse is the envelope for A2A responses over Yggdrasil TCP
@@ -28,16 +29,10 @@ type A2AResponse struct {
 
 // HandleA2A handles outbound A2A requests to remote peers.
 // URL format: /a2a/{peer_id}
-// A local A2A client POSTs a JSON-RPC request here, which gets wrapped
-// in an A2AMessage envelope, sent to the remote peer over Yggdrasil TCP,
-// and the A2AResponse is unwrapped and returned.
+// POST: forwards a JSON-RPC request to the remote peer's A2A server.
+// GET:  fetches the remote peer's agent card (/.well-known/agent-card.json) for discovery.
 func HandleA2A(tcpPort int, netStack *stack.Stack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
 		// Parse path: /a2a/{peer_id}
 		peerId := strings.TrimPrefix(r.URL.Path, "/a2a/")
 		if peerId == "" {
@@ -45,17 +40,22 @@ func HandleA2A(tcpPort int, netStack *stack.Stack) http.HandlerFunc {
 			return
 		}
 
-		// Read the JSON-RPC request body
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to read body: %v", err), http.StatusBadRequest)
+		var envelope A2AMessage
+		switch r.Method {
+		case "GET":
+			// Agent card discovery — no body needed
+			envelope = A2AMessage{A2A: true, AgentCard: true}
+		case "POST":
+			// Read the JSON-RPC request body
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to read body: %v", err), http.StatusBadRequest)
+				return
+			}
+			envelope = A2AMessage{A2A: true, Request: body}
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
-		}
-
-		// Wrap in A2A envelope
-		envelope := A2AMessage{
-			A2A:     true,
-			Request: body,
 		}
 		envelopeBytes, err := json.Marshal(envelope)
 		if err != nil {

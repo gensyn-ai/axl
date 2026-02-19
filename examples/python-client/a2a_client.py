@@ -84,9 +84,31 @@ async def run_local(base_url: str, service: str, method: str):
         print(json.dumps(response.model_dump(mode="json", exclude_none=True), indent=2))
 
 
+async def run_remote_agent_card(node_url: str, peer_id: str):
+    """Fetch the agent card from a remote peer via the local Gensyn node."""
+    url = f"{node_url}/a2a/{peer_id}"
+    logger.info(f"Fetching agent card from remote peer {peer_id[:16]}... via {node_url}")
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.get(url)
+
+    if response.status_code != 200:
+        logger.error(f"STATUS: {response.status_code}")
+        logger.error(response.text)
+        return
+
+    try:
+        data = response.json()
+        print(json.dumps(data, indent=2))
+    except json.JSONDecodeError:
+        print(response.text)
+
+
 async def run_remote(node_url: str, peer_id: str, service: str, method: str):
     """Send an A2A request to a remote peer via the local Gensyn node."""
-
+    
+    await run_remote_agent_card(node_url, peer_id)
+    
     mcp_request = build_mcp_request(service, method)
 
     # Build the A2A JSON-RPC message/send request
