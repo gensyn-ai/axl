@@ -31,5 +31,16 @@ go.work
 .DS_Store
 Thumbs.db
 
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Build artifacts
+node
+
 # Claude
 .claude/

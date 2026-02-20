@@ -2,7 +2,7 @@
 name = "node-agent-integrations"
 version = "0.1.0"
 description = "Agentic protocol integrations for the node"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "aiohttp>=3.9.0",
     "a2a-sdk>=0.3.0",

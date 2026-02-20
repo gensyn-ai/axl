@@ -1,0 +1,54 @@
+steps:
+  # Set the image tag so if this workflow is run on main, the images built will be tagged
+  # with either `pr-<num>` or `main`. Our agent has a hook that can set env variables in all
+  # downstream jobs just by prepending some metadata with "env-"
+  - label: "Set Image Tag Suffix"
+    agents:
+      queue: default
+    command: |
+      if [ ! "$BUILDKITE_PULL_REQUEST" == "false" ]; then
+        buildkite-agent meta-data set "env-IMAGE_TAG" "pr-$BUILDKITE_PULL_REQUEST"
+      else
+        buildkite-agent meta-data set "env-IMAGE_TAG" "main"
+      fi
+
+      buildkite-agent meta-data set "env-REPO_PREFIX" "europe-docker.pkg.dev/gensyn-main/registry"
+
+  - wait
+
+  - label: "Go Unit Tests"
+    key: go-tests
+    agents:
+      queue: default
+    command: |
+      go test ./...
+
+  - label: "Python Integrations Tests"
+    key: python-tests
+    agents:
+      queue: default
+    plugins:
+      - docker#v5.11.0:
+          image: "python:3.12-slim"
+          workdir: "/workdir"
+    command: |
+      cd integrations
+      pip install -e ".[test]"
+      pytest
+
+  - label: "Build Docker Image"
+    key: build-node
+    depends_on:
+      - go-tests
+      - python-tests
+    agents:
+      queue: default
+    command: |
+      .buildkite/tools/build-oci-image.sh \
+        --output type=image,push=true,\"name=$$REPO_PREFIX/yggdrasil-node:$$IMAGE_TAG,$$REPO_PREFIX/yggdrasil-node:$BUILDKITE_COMMIT\" \
+        --local dockerfile=/workdir \
+        --local context=/workdir \
+        --opt filename=./containerfiles/Dockerfile \
+        --export-cache type=registry,ref=$$REPO_PREFIX/yggdrasil-node:cache-$$IMAGE_TAG,image-manifest=true,mode=max \
+        --import-cache type=registry,ref=$$REPO_PREFIX/yggdrasil-node:cache-$$IMAGE_TAG \
+        --import-cache type=registry,ref=$$REPO_PREFIX/yggdrasil-node:cache-main
