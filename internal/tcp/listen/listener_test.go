@@ -580,3 +580,113 @@ func TestPeerIDFromAddrSameAddressProducesSameID(t *testing.T) {
 		t.Errorf("expected same peer ID for same address, got %q and %q", id1, id2)
 	}
 }
+
+// --- handleTCPConn branch coverage ---
+
+// writeFailingConn proxies reads to the underlying net.Conn but rejects all writes.
+// Used to exercise sendResponse error paths without timing-sensitive connection teardown.
+type writeFailingConn struct {
+	net.Conn
+}
+
+func (c *writeFailingConn) Write([]byte) (int, error) {
+	return 0, errors.New("write disabled")
+}
+
+func TestHandleTCPConnOversizedMessage(t *testing.T) {
+	client, server := net.Pipe()
+	wrappedServer := &testConn{
+		Conn:       server,
+		remoteAddr: &net.TCPAddr{IP: net.ParseIP("200::1"), Port: 12345},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handleTCPConn(wrappedServer, NewMultiplexer())
+	}()
+
+	// Write a length header encoding MaxMessageSize+1 — handler must drop the connection.
+	lenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBuf, api.MaxMessageSize+1)
+	client.Write(lenBuf)
+
+	select {
+	case <-done:
+		// Expected: handler returned without reading a payload.
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout — handler did not return on oversized message")
+	}
+	client.Close()
+}
+
+func TestHandleTCPConnStreamForwardError(t *testing.T) {
+	client, server := net.Pipe()
+	wrappedServer := &testConn{
+		Conn:       server,
+		remoteAddr: &net.TCPAddr{IP: net.ParseIP("200::1"), Port: 12345},
+	}
+
+	testData := []byte(`{"type":"forward-error-test"}`)
+	errStream := &mockStream{
+		id:          "err-stream",
+		allowedData: testData,
+		forwardErr:  errors.New("upstream unavailable"),
+	}
+	mux := NewMultiplexer()
+	mux.AddSource(errStream, func() any { return &struct{}{} })
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handleTCPConn(wrappedServer, mux)
+	}()
+
+	// net.Pipe is synchronous: Write blocks until server's ReadFull consumes all bytes.
+	// After it returns, the server has already called Forward (which returns the error)
+	// and is looping back to read the next message.
+	client.Write(frameMessage(testData))
+	client.Close() // EOF on next read causes handler to exit cleanly.
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout")
+	}
+}
+
+func TestHandleTCPConnSendResponseFailure(t *testing.T) {
+	client, server := net.Pipe()
+	// writeFailingConn proxies reads from server but blocks all writes,
+	// so sendResponse inside handleTCPConn will always fail.
+	wrappedServer := &testConn{
+		Conn:       &writeFailingConn{server},
+		remoteAddr: &net.TCPAddr{IP: net.ParseIP("200::1"), Port: 12345},
+	}
+
+	testData := []byte(`{"type":"send-response-test"}`)
+	respondingStream := &mockStream{
+		id:            "responder",
+		allowedData:   testData,
+		forwardResult: []byte(`{"result":"ok"}`),
+	}
+	mux := NewMultiplexer()
+	mux.AddSource(respondingStream, func() any { return &struct{}{} })
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handleTCPConn(wrappedServer, mux)
+	}()
+
+	// Write blocks until server's ReadFull consumes the bytes; sendResponse then fails
+	// immediately because writeFailingConn rejects the write unconditionally.
+	client.Write(frameMessage(testData))
+	client.Close() // EOF on next read causes handler to exit cleanly.
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout")
+	}
+}

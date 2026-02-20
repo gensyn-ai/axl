@@ -19,6 +19,10 @@ var (
 	ErrDialPeer      = errors.New("failed to reach peer")
 )
 
+var dialTCP = func(netStack *stack.Stack, addr tcpip.FullAddress) (net.Conn, error) {
+	return gonet.DialTCP(netStack, addr, header.IPv6ProtocolNumber)
+}
+
 func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerId string, timeout time.Duration) (net.Conn, error) {
 
 	peerIdBytes, err := hex.DecodeString(peerId)
@@ -29,13 +33,12 @@ func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerId string, timeo
 	copy(keyArr[:], peerIdBytes)
 	destAddr := address.AddrForKey(keyArr[:])
 
-	// Dial the remote peer
 	destIP := tcpip.AddrFromSlice(destAddr[:])
-	conn, err := gonet.DialTCP(netStack, tcpip.FullAddress{
+	conn, err := dialTCP(netStack, tcpip.FullAddress{
 		NIC:  0,
 		Addr: destIP,
 		Port: uint16(tcpPort),
-	}, header.IPv6ProtocolNumber)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDialPeer, err)
 	}

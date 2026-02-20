@@ -2,9 +2,13 @@ package dial
 
 import (
 	"errors"
+	"net"
 	"strings"
 	"testing"
 	"time"
+
+	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
 // These tests focus on key validation since actual dialing requires a real gVisor stack.
@@ -108,8 +112,7 @@ func TestDialPeerConnectionInvalidHexPatterns(t *testing.T) {
 }
 
 func TestDialPeerConnectionKeyLengthBoundaries(t *testing.T) {
-	// Test various key lengths that should all fail validation
-	// Note: 32 bytes is the valid length, but we can't test it without a real gVisor stack
+	// Test various key lengths that should all fail validation (32 bytes is valid)
 	tests := []struct {
 		name      string
 		byteCount int
@@ -118,7 +121,7 @@ func TestDialPeerConnectionKeyLengthBoundaries(t *testing.T) {
 		{"1 byte", 1},
 		{"16 bytes", 16},
 		{"31 bytes", 31},
-		// 32 bytes is valid - skip since nil stack panics
+		// 32 bytes is valid — tested separately via dialTCP injection
 		{"33 bytes", 33},
 		{"64 bytes", 64},
 	}
@@ -136,5 +139,48 @@ func TestDialPeerConnectionKeyLengthBoundaries(t *testing.T) {
 			}
 		})
 	}
+}
+
+// setDialTCP replaces dialTCP for the duration of a test and restores it on cleanup.
+func setDialTCP(t *testing.T, fn func(*stack.Stack, tcpip.FullAddress) (net.Conn, error)) {
+	t.Helper()
+	old := dialTCP
+	dialTCP = fn
+	t.Cleanup(func() { dialTCP = old })
+}
+
+func TestDialPeerConnectionDialError(t *testing.T) {
+	setDialTCP(t, func(_ *stack.Stack, _ tcpip.FullAddress) (net.Conn, error) {
+		return nil, errors.New("connection refused")
+	})
+
+	validKey := strings.Repeat("ab", 32)
+	_, err := DialPeerConnection(nil, 7000, validKey, 30*time.Second)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrDialPeer) {
+		t.Errorf("expected ErrDialPeer, got %v", err)
+	}
+}
+
+func TestDialPeerConnectionSuccess(t *testing.T) {
+	peerConn, localConn := net.Pipe()
+	defer peerConn.Close()
+	defer localConn.Close()
+
+	setDialTCP(t, func(_ *stack.Stack, _ tcpip.FullAddress) (net.Conn, error) {
+		return peerConn, nil
+	})
+
+	validKey := strings.Repeat("ab", 32)
+	conn, err := DialPeerConnection(nil, 7000, validKey, 5*time.Second)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if conn == nil {
+		t.Fatal("expected non-nil connection")
+	}
+	conn.Close()
 }
 
