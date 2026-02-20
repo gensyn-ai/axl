@@ -27,7 +27,7 @@ Our intent is to provide a simple, permissionless, and secure communication laye
 
 ### Public Nodes
 We encourage anyone to run a public node to help bootstrap the network.  To run a public node one must expose a public IP address and port, and then run the node with the `-listen` flag or setting the config option.
-
+ 
 ## Documentation
 
 | Document | Contents |
