@@ -357,7 +357,8 @@ class TestCreateAgentCard:
     @pytest.mark.asyncio
     async def test_create_card_with_skills(self):
         """Test agent card creation with discovered skills."""
-        with patch("a2a_serving.a2a_server.discover_skills_from_router") as mock_discover:
+        with patch("a2a_serving.a2a_server.discover_skills_from_router") as mock_discover, \
+             patch("a2a_serving.a2a_server.get_peer_id", return_value="peer-abc123"):
             from a2a.types import AgentSkill
             mock_discover.return_value = [
                 AgentSkill(
@@ -371,16 +372,17 @@ class TestCreateAgentCard:
 
             card = await create_agent_card("127.0.0.1", 9004, "http://127.0.0.1:9003")
 
-        assert card.name == "deMCP A2A Agent"
+        assert card.name == "MCP Router A2A Agent"
         assert len(card.skills) == 1
         assert card.skills[0].id == "weather"
-        assert card.url == "http://127.0.0.1:9004/"
+        assert card.url == "/a2a/peer-abc123"
         assert card.capabilities.streaming is True
 
     @pytest.mark.asyncio
     async def test_create_card_default_skill_when_no_services(self):
         """Test that a default mcp_proxy skill is added when no services exist."""
-        with patch("a2a_serving.a2a_server.discover_skills_from_router") as mock_discover:
+        with patch("a2a_serving.a2a_server.discover_skills_from_router") as mock_discover, \
+             patch("a2a_serving.a2a_server.get_peer_id", return_value="peer-abc123"):
             mock_discover.return_value = []
 
             card = await create_agent_card("127.0.0.1", 9004, "http://127.0.0.1:9003")
@@ -391,7 +393,8 @@ class TestCreateAgentCard:
     @pytest.mark.asyncio
     async def test_create_card_custom_name(self):
         """Test agent card with custom agent name."""
-        with patch("a2a_serving.a2a_server.discover_skills_from_router") as mock_discover:
+        with patch("a2a_serving.a2a_server.discover_skills_from_router") as mock_discover, \
+             patch("a2a_serving.a2a_server.get_peer_id", return_value="peer-abc123"):
             mock_discover.return_value = []
 
             card = await create_agent_card(
@@ -399,4 +402,4 @@ class TestCreateAgentCard:
             )
 
         assert card.name == "Custom Agent"
-        assert card.url == "http://0.0.0.0:8080/"
+        assert card.url == "/a2a/peer-abc123"
