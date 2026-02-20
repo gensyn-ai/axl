@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +13,10 @@ import (
 
 	"example.com/internal/tcp/dial"
 )
+
+var a2aDial = func(netStack *stack.Stack, tcpPort int, peerId string) (net.Conn, error) {
+	return dial.DialPeerConnection(netStack, tcpPort, peerId, 30*time.Second)
+}
 
 // A2AMessage is the envelope for A2A requests over Yggdrasil TCP
 type A2AMessage struct {
@@ -64,7 +69,7 @@ func HandleA2A(tcpPort int, netStack *stack.Stack) http.HandlerFunc {
 		}
 
 		// Dial the remote peer
-		conn, err := dial.DialPeerConnection(netStack, tcpPort, peerId, 30*time.Second)
+		conn, err := a2aDial(netStack, tcpPort, peerId)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 			return

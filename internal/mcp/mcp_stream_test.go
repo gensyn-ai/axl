@@ -27,13 +27,6 @@ func TestNewMCPStream(t *testing.T) {
 	}
 }
 
-func TestMCPStreamGetID(t *testing.T) {
-	stream := NewMCPStream("http://localhost:8080")
-
-	if stream.GetID() != "mcp" {
-		t.Errorf("expected GetID to return 'mcp', got %s", stream.GetID())
-	}
-}
 
 func TestMCPStreamIsAllowed(t *testing.T) {
 	stream := NewMCPStream("http://localhost:8080")
@@ -99,18 +92,25 @@ func TestMCPStreamIsAllowed(t *testing.T) {
 }
 
 func TestMCPStreamForwardSuccess(t *testing.T) {
-	// Create mock router server
+	expectedService := "weather"
+	expectedFromPeerId := "frompeerid123"
+	expectedRequest := `{"method":"tools/call"}`
 	expectedResponse := json.RawMessage(`{"result":"sunny"}`)
+
+	var gotFromPeerId, gotService string
+	var gotRequest json.RawMessage
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req RouterRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
+		gotFromPeerId = req.FromPeerId
+		gotService = req.Service
+		gotRequest = req.Request
 
-		resp := RouterResponse{
-			Response: expectedResponse,
-		}
+		resp := RouterResponse{Response: expectedResponse}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -123,11 +123,11 @@ func TestMCPStreamForwardSuccess(t *testing.T) {
 	}
 
 	mcpMsg := &api.MCPMessage{
-		Service: "weather",
-		Request: json.RawMessage(`{"method":"tools/call"}`),
+		Service: expectedService,
+		Request: json.RawMessage(expectedRequest),
 	}
 
-	respBytes, err := stream.Forward(mcpMsg, "frompeerid123")
+	respBytes, err := stream.Forward(mcpMsg, expectedFromPeerId)
 	if err != nil {
 		t.Fatalf("Forward failed: %v", err)
 	}
@@ -137,14 +137,26 @@ func TestMCPStreamForwardSuccess(t *testing.T) {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
 
-	if mcpResp.Service != "weather" {
-		t.Errorf("expected service 'weather', got %s", mcpResp.Service)
+	// Verify response fields
+	if mcpResp.Service != expectedService {
+		t.Errorf("expected service %q, got %q", expectedService, mcpResp.Service)
 	}
 	if string(mcpResp.Response) != string(expectedResponse) {
 		t.Errorf("expected response %s, got %s", string(expectedResponse), string(mcpResp.Response))
 	}
 	if mcpResp.Error != "" {
 		t.Errorf("expected no error, got %s", mcpResp.Error)
+	}
+
+	// Verify the router received the correct routing fields
+	if gotFromPeerId != expectedFromPeerId {
+		t.Errorf("expected fromPeerId %q forwarded to router, got %q", expectedFromPeerId, gotFromPeerId)
+	}
+	if gotService != expectedService {
+		t.Errorf("expected service %q forwarded to router, got %q", expectedService, gotService)
+	}
+	if string(gotRequest) != expectedRequest {
+		t.Errorf("expected request %s forwarded to router, got %s", expectedRequest, string(gotRequest))
 	}
 }
 
@@ -214,10 +226,14 @@ func TestMCPStreamForwardRouterError(t *testing.T) {
 }
 
 func TestMCPStreamForwardRouterConnectionFailure(t *testing.T) {
+	// Close the server immediately so any request gets "connection refused".
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.Close()
+
 	stream := &MCPStream{
 		ID:        "mcp",
-		client:    http.DefaultClient,
-		routerURL: "http://localhost:1", // Invalid port to force connection failure
+		client:    server.Client(),
+		routerURL: server.URL,
 	}
 
 	mcpMsg := &api.MCPMessage{
@@ -285,125 +301,3 @@ func TestMCPStreamForwardNullResponse(t *testing.T) {
 	}
 }
 
-func TestMCPStreamForwardPreservesFromPeerId(t *testing.T) {
-	expectedFromPeerId := "peer123abc"
-	var receivedFromPeerId string
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req RouterRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		receivedFromPeerId = req.FromPeerId
-
-		resp := RouterResponse{
-			Response: json.RawMessage(`{}`),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	stream := &MCPStream{
-		ID:        "mcp",
-		client:    server.Client(),
-		routerURL: server.URL,
-	}
-
-	mcpMsg := &api.MCPMessage{
-		Service: "weather",
-		Request: json.RawMessage(`{}`),
-	}
-
-	_, err := stream.Forward(mcpMsg, expectedFromPeerId)
-	if err != nil {
-		t.Fatalf("Forward failed: %v", err)
-	}
-
-	if receivedFromPeerId != expectedFromPeerId {
-		t.Errorf("expected fromPeerId %s, got %s", expectedFromPeerId, receivedFromPeerId)
-	}
-}
-
-func TestMCPStreamForwardPreservesService(t *testing.T) {
-	expectedService := "my-custom-service"
-	var receivedService string
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req RouterRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		receivedService = req.Service
-
-		resp := RouterResponse{
-			Response: json.RawMessage(`{}`),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	stream := &MCPStream{
-		ID:        "mcp",
-		client:    server.Client(),
-		routerURL: server.URL,
-	}
-
-	mcpMsg := &api.MCPMessage{
-		Service: expectedService,
-		Request: json.RawMessage(`{}`),
-	}
-
-	_, err := stream.Forward(mcpMsg, "frompeerid")
-	if err != nil {
-		t.Fatalf("Forward failed: %v", err)
-	}
-
-	if receivedService != expectedService {
-		t.Errorf("expected service %s, got %s", expectedService, receivedService)
-	}
-}
-
-func TestMCPStreamForwardPreservesRequest(t *testing.T) {
-	expectedRequest := `{"method":"tools/call","params":{"name":"get_weather"}}`
-	var receivedRequest json.RawMessage
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req RouterRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		receivedRequest = req.Request
-
-		resp := RouterResponse{
-			Response: json.RawMessage(`{}`),
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	stream := &MCPStream{
-		ID:        "mcp",
-		client:    server.Client(),
-		routerURL: server.URL,
-	}
-
-	mcpMsg := &api.MCPMessage{
-		Service: "weather",
-		Request: json.RawMessage(expectedRequest),
-	}
-
-	_, err := stream.Forward(mcpMsg, "frompeerid")
-	if err != nil {
-		t.Fatalf("Forward failed: %v", err)
-	}
-
-	if string(receivedRequest) != expectedRequest {
-		t.Errorf("expected request %s, got %s", expectedRequest, string(receivedRequest))
-	}
-}

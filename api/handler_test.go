@@ -50,6 +50,18 @@ func TestNewHandlerRouting(t *testing.T) {
 			expectStatus: http.StatusMethodNotAllowed,
 		},
 		{
+			name:         "a2a route exists - missing peer id",
+			method:       http.MethodPost,
+			path:         "/a2a/",
+			expectStatus: http.StatusBadRequest,
+		},
+		{
+			name:         "a2a route exists - method not allowed",
+			method:       http.MethodPut,
+			path:         "/a2a/" + validPeerId,
+			expectStatus: http.StatusMethodNotAllowed,
+		},
+		{
 			name:         "unknown route returns 404",
 			method:       http.MethodGet,
 			path:         "/unknown",
@@ -112,6 +124,12 @@ func TestNewHandlerMCPRouting(t *testing.T) {
 }
 
 func TestNewHandlerRecvIntegration(t *testing.T) {
+	t.Cleanup(func() {
+		RecvMutex.Lock()
+		RecvQueue = nil
+		RecvMutex.Unlock()
+	})
+
 	handler := NewHandler(nil, 7000, nil)
 
 	// Clear the queue

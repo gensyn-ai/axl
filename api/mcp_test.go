@@ -1,13 +1,14 @@
 package api
 
 import (
-	"encoding/binary"
-	"io"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 
 const validPeerId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -18,6 +19,22 @@ func resetMCPSessions(t *testing.T) {
 	mcpSessionMutex.Lock()
 	mcpSessions = map[string]bool{}
 	mcpSessionMutex.Unlock()
+}
+
+// resetMCPDial restores the mcpDial var after the test.
+func resetMCPDial(t *testing.T) {
+	t.Helper()
+	original := mcpDial
+	t.Cleanup(func() { mcpDial = original })
+}
+
+// setMCPDialer overrides mcpDial to return the given conn/error pair.
+func setMCPDialer(t *testing.T, conn net.Conn, err error) {
+	t.Helper()
+	resetMCPDial(t)
+	mcpDial = func(_ *stack.Stack, _ int, _ string) (net.Conn, error) {
+		return conn, err
+	}
 }
 
 func TestHandleMCPInvalidPath(t *testing.T) {
@@ -108,50 +125,200 @@ func TestHandleMCPDialFailure(t *testing.T) {
 	}
 }
 
-func TestSendAndReadMCPRequestResponse(t *testing.T) {
-	client, server := net.Pipe()
-	defer client.Close()
-	done := make(chan struct{})
-	expectedPayload := []byte(`{"service":"weather"}`)
+func TestHandleMCPDialFailureOnInitialize(t *testing.T) {
+	resetMCPSessions(t)
+	setMCPDialer(t, nil, &net.OpError{Op: "dial", Err: net.UnknownNetworkError("unreachable")})
+
+	handler := HandleMCP(7000, nil)
+	body := strings.NewReader(`{"method":"initialize","id":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Result().StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", w.Result().StatusCode)
+	}
+}
+
+func TestHandleMCPWriteError(t *testing.T) {
+	resetMCPSessions(t)
+
+	// Closing the peer side immediately causes the handler's write to fail.
+	peerSide, handlerSide := net.Pipe()
+	peerSide.Close()
+	setMCPDialer(t, handlerSide, nil)
+
+	handler := HandleMCP(7000, nil)
+	body := strings.NewReader(`{"method":"initialize","id":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Result().StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", w.Result().StatusCode)
+	}
+}
+
+func TestHandleMCPReadError(t *testing.T) {
+	resetMCPSessions(t)
+
+	peerSide, handlerSide := net.Pipe()
+	setMCPDialer(t, handlerSide, nil)
+
+	// Drain the handler's write then close so the handler's read fails.
 	go func() {
-		defer server.Close()
-		defer close(done)
-		lenBuf := make([]byte, 4)
-		if _, err := io.ReadFull(server, lenBuf); err != nil {
-			t.Errorf("server failed to read len: %v", err)
-			return
-		}
-		payloadLen := binary.BigEndian.Uint32(lenBuf)
-		payload := make([]byte, payloadLen)
-		if _, err := io.ReadFull(server, payload); err != nil {
-			t.Errorf("server failed to read payload: %v", err)
-			return
-		}
-		if string(payload) != string(expectedPayload) {
-			t.Errorf("unexpected payload %s", payload)
-		}
-		resp := []byte(`{"result":"ok"}`)
-		respLen := make([]byte, 4)
-		binary.BigEndian.PutUint32(respLen, uint32(len(resp)))
-		if _, err := server.Write(respLen); err != nil {
-			t.Errorf("server failed to write len: %v", err)
-			return
-		}
-		if _, err := server.Write(resp); err != nil {
-			t.Errorf("server failed to write resp: %v", err)
-			return
-		}
+		ReadLengthPrefixed(peerSide)
+		peerSide.Close()
 	}()
 
-	if err := WriteLengthPrefixed(client, expectedPayload); err != nil {
-		t.Fatalf("WriteLengthPrefixed failed: %v", err)
+	handler := HandleMCP(7000, nil)
+	body := strings.NewReader(`{"method":"initialize","id":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Result().StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", w.Result().StatusCode)
 	}
-	resp, err := ReadLengthPrefixed(client)
-	if err != nil {
-		t.Fatalf("ReadLengthPrefixed failed: %v", err)
+}
+
+func TestHandleMCPInvalidResponseFromPeer(t *testing.T) {
+	resetMCPSessions(t)
+
+	peerSide, handlerSide := net.Pipe()
+	setMCPDialer(t, handlerSide, nil)
+
+	go func() {
+		ReadLengthPrefixed(peerSide)
+		WriteLengthPrefixed(peerSide, []byte("not valid json"))
+		peerSide.Close()
+	}()
+
+	handler := HandleMCP(7000, nil)
+	body := strings.NewReader(`{"method":"initialize","id":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Result().StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", w.Result().StatusCode)
 	}
-	if string(resp) != `{"result":"ok"}` {
-		t.Fatalf("unexpected response %s", resp)
+}
+
+func TestHandleMCPErrorResponseFromPeer(t *testing.T) {
+	resetMCPSessions(t)
+
+	peerSide, handlerSide := net.Pipe()
+	setMCPDialer(t, handlerSide, nil)
+
+	go func() {
+		ReadLengthPrefixed(peerSide)
+		errResp := MCPResponse{Service: "weather", Error: "service unavailable"}
+		respBytes, _ := json.Marshal(errResp)
+		WriteLengthPrefixed(peerSide, respBytes)
+		peerSide.Close()
+	}()
+
+	handler := HandleMCP(7000, nil)
+	body := strings.NewReader(`{"method":"initialize","id":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	// Handler returns JSON-RPC error (200 with error body) not an HTTP error status.
+	resp := w.Result()
+	if resp.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("expected application/json, got %s", resp.Header.Get("Content-Type"))
 	}
-	<-done
+	var jsonrpcResp map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&jsonrpcResp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if jsonrpcResp["error"] == nil {
+		t.Error("expected 'error' field in JSON-RPC response")
+	}
+}
+
+func TestHandleMCPInitializeSuccess(t *testing.T) {
+	resetMCPSessions(t)
+
+	peerSide, handlerSide := net.Pipe()
+	t.Cleanup(func() { peerSide.Close(); handlerSide.Close() })
+	setMCPDialer(t, handlerSide, nil)
+
+	innerResp := json.RawMessage(`{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}`)
+
+	go func() {
+		data, err := ReadLengthPrefixed(peerSide)
+		if err != nil {
+			return
+		}
+		var env MCPMessage
+		if err := json.Unmarshal(data, &env); err != nil {
+			return
+		}
+		resp := MCPResponse{Service: env.Service, Response: innerResp}
+		respBytes, _ := json.Marshal(resp)
+		WriteLengthPrefixed(peerSide, respBytes)
+		peerSide.Close()
+	}()
+
+	handler := HandleMCP(7000, nil)
+	body := strings.NewReader(`{"method":"initialize","id":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	sessionID := resp.Header.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		t.Fatal("expected Mcp-Session-Id header to be set")
+	}
+	mcpSessionMutex.RLock()
+	if !mcpSessions[sessionID] {
+		t.Errorf("session %s not found in mcpSessions", sessionID)
+	}
+	mcpSessionMutex.RUnlock()
+
+	var got json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if string(got) != string(innerResp) {
+		t.Errorf("expected body %s, got %s", string(innerResp), string(got))
+	}
+}
+
+func TestHandleMCPDeleteSession(t *testing.T) {
+	resetMCPSessions(t)
+
+	sessionID := "test-session-delete-123"
+	mcpSessionMutex.Lock()
+	mcpSessions[sessionID] = true
+	mcpSessionMutex.Unlock()
+
+	handler := HandleMCP(7000, nil)
+	req := httptest.NewRequest(http.MethodDelete, "/mcp/"+validPeerId+"/weather", nil)
+	req.Header.Set("Mcp-Session-Id", sessionID)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Result().StatusCode)
+	}
+	mcpSessionMutex.RLock()
+	if mcpSessions[sessionID] {
+		t.Error("expected session to be removed after DELETE")
+	}
+	mcpSessionMutex.RUnlock()
 }

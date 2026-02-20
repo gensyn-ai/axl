@@ -1,7 +1,6 @@
 package dial
 
 import (
-	"encoding/hex"
 	"errors"
 	"strings"
 	"testing"
@@ -139,48 +138,3 @@ func TestDialPeerConnectionKeyLengthBoundaries(t *testing.T) {
 	}
 }
 
-func TestValidKeyFormats(t *testing.T) {
-	// These are valid hex formats that should pass validation
-	// We only verify they decode to 32 bytes, since we can't dial without a stack
-	validKeys := []string{
-		strings.Repeat("00", 32),                    // All zeros
-		strings.Repeat("ff", 32),                    // All ones
-		strings.Repeat("ab", 32),                    // Repeating pattern
-		"0123456789abcdef" + strings.Repeat("00", 24), // Mixed digits and letters
-		strings.ToUpper(strings.Repeat("ab", 32)),  // Uppercase
-		"AbCdEf" + strings.Repeat("00", 29),        // Mixed case
-	}
-
-	for _, key := range validKeys {
-		decoded, err := hex.DecodeString(key)
-		if err != nil {
-			t.Errorf("key %q should be valid hex: %v", key[:16]+"...", err)
-			continue
-		}
-		if len(decoded) != 32 {
-			t.Errorf("key %q should decode to 32 bytes, got %d", key[:16]+"...", len(decoded))
-		}
-	}
-}
-
-func TestInvalidKeyFormats(t *testing.T) {
-	// These should all fail hex validation
-	invalidKeys := []string{
-		"",                           // Empty
-		"g" + strings.Repeat("0", 63), // Invalid hex char
-		strings.Repeat("0", 63),      // Odd length
-		" " + strings.Repeat("0", 63), // Leading space
-		strings.Repeat("0", 63) + " ", // Trailing space
-	}
-
-	for _, key := range invalidKeys {
-		_, err := hex.DecodeString(key)
-		if err == nil {
-			// If hex.DecodeString succeeds, check length
-			decoded, _ := hex.DecodeString(key)
-			if len(decoded) == 32 {
-				t.Errorf("key should be invalid but passed: %q", key)
-			}
-		}
-	}
-}

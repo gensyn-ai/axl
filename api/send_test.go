@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/binary"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -207,6 +208,9 @@ func TestHandleSendSuccess(t *testing.T) {
 	}
 	if got := conn.writes[0]; len(got) != 4 {
 		t.Fatalf("expected length prefix of 4 bytes, got %d", len(got))
+	}
+	if encodedLen := binary.BigEndian.Uint32(conn.writes[0]); encodedLen != uint32(len(body)) {
+		t.Fatalf("expected length prefix to encode %d, got %d", len(body), encodedLen)
 	}
 	if string(conn.writes[1]) != string(body) {
 		t.Fatalf("expected payload %q, got %q", string(body), string(conn.writes[1]))

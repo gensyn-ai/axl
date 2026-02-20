@@ -4,10 +4,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,7 +167,10 @@ func TestSendResponseLargeData(t *testing.T) {
 	}
 }
 
-// mockWriteConn is a minimal net.Conn implementation for testing write errors
+// errWriteFailed is the sentinel error returned by mockWriteConn on a simulated write failure.
+var errWriteFailed = errors.New("write failed")
+
+// mockWriteConn is a minimal net.Conn implementation for testing write errors.
 type mockWriteConn struct {
 	writeCount int
 	failOnCall int // 0 = never fail, 1 = fail on first call, 2 = fail on second call
@@ -181,7 +186,7 @@ func (m *mockWriteConn) SetWriteDeadline(t time.Time) error { return nil }
 func (m *mockWriteConn) Write(b []byte) (int, error) {
 	m.writeCount++
 	if m.failOnCall > 0 && m.writeCount == m.failOnCall {
-		return 0, errors.New("write failed")
+		return 0, errWriteFailed
 	}
 	return len(b), nil
 }
@@ -193,8 +198,11 @@ func TestSendResponseWriteLengthError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if err.Error() != "failed to write length: write failed" {
-		t.Errorf("unexpected error: %v", err)
+	if !errors.Is(err, errWriteFailed) {
+		t.Errorf("expected errWriteFailed in chain, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "length") {
+		t.Errorf("expected 'length' in error message, got: %v", err)
 	}
 }
 
@@ -205,8 +213,11 @@ func TestSendResponseWriteDataError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if err.Error() != "failed to write data: write failed" {
-		t.Errorf("unexpected error: %v", err)
+	if !errors.Is(err, errWriteFailed) {
+		t.Errorf("expected errWriteFailed in chain, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "data") {
+		t.Errorf("expected 'data' in error message, got: %v", err)
 	}
 }
 
@@ -266,7 +277,7 @@ func TestHandleTCPConnNonMCPMessage(t *testing.T) {
 	go func() {
 		defer close(done)
 		// Use a dummy router URL since MCP won't match
-		handleTCPConn(wrappedServer, "http://localhost:1", "")
+		handleTCPConn(wrappedServer, "", "")
 	}()
 
 	// Write message and close to trigger EOF
@@ -314,7 +325,7 @@ func TestHandleTCPConnMultipleMessages(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1", "")
+		handleTCPConn(wrappedServer, "", "")
 	}()
 
 	// Send all messages then close
@@ -368,23 +379,23 @@ func TestHandleTCPConnMCPMessageWithResponse(t *testing.T) {
 	}
 	mcpData, _ := json.Marshal(mcpMsg)
 
-	var responseData []byte
-	responseDone := make(chan struct{})
+	// responseData is written by the reader goroutine and read by the test after sync.
+	responseData := make(chan []byte, 1)
 
+	// Read the length-prefixed response sent back by handleTCPConn.
 	go func() {
-		defer close(responseDone)
-		// Read the response from handleTCPConn
 		lenBuf := make([]byte, 4)
 		if _, err := io.ReadFull(client, lenBuf); err != nil {
-			t.Logf("read length error (may be expected): %v", err)
+			responseData <- nil
 			return
 		}
 		length := binary.BigEndian.Uint32(lenBuf)
-		responseData = make([]byte, length)
-		if _, err := io.ReadFull(client, responseData); err != nil {
-			t.Logf("read data error: %v", err)
+		buf := make([]byte, length)
+		if _, err := io.ReadFull(client, buf); err != nil {
+			responseData <- nil
 			return
 		}
+		responseData <- buf
 	}()
 
 	handlerDone := make(chan struct{})
@@ -393,41 +404,36 @@ func TestHandleTCPConnMCPMessageWithResponse(t *testing.T) {
 		handleTCPConn(wrappedServer, routerServer.URL, "")
 	}()
 
-	// Write the MCP message
+	// Send the MCP message; handleTCPConn will forward it to the router and write back a response.
 	client.Write(frameMessage(mcpData))
 
-	// Wait a bit for response to come back
-	time.Sleep(100 * time.Millisecond)
+	// Block until we have the response — no sleep, no skip.
+	select {
+	case data := <-responseData:
+		if data == nil {
+			t.Fatal("failed to read response from handleTCPConn")
+		}
+		var mcpResp api.MCPResponse
+		if err := json.Unmarshal(data, &mcpResp); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		if mcpResp.Service != "weather" {
+			t.Errorf("expected service 'weather', got %s", mcpResp.Service)
+		}
+		if string(mcpResp.Response) != string(expectedResponse) {
+			t.Errorf("expected response %s, got %s", string(expectedResponse), string(mcpResp.Response))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for response from handleTCPConn")
+	}
 
-	// Close client to terminate the handler
+	// Close client to let the handler's next ReadFull return EOF and exit cleanly.
 	client.Close()
 
-	// Wait for handler
 	select {
 	case <-handlerDone:
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for handler")
-	}
-
-	// Wait for response reader
-	select {
-	case <-responseDone:
-	case <-time.After(100 * time.Millisecond):
-		// Response may not have arrived, that's okay
-	}
-
-	if len(responseData) == 0 {
-		t.Skip("response not received (timing issue)")
-	}
-
-	// Parse response
-	var mcpResp api.MCPResponse
-	if err := json.Unmarshal(responseData, &mcpResp); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
-	}
-
-	if mcpResp.Service != "weather" {
-		t.Errorf("expected service 'weather', got %s", mcpResp.Service)
+		t.Fatal("timeout waiting for handler to exit")
 	}
 }
 
@@ -446,12 +452,12 @@ func TestHandleTCPConnQueueOverflow(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1", "")
+		handleTCPConn(wrappedServer, "", "")
 	}()
 
 	// Send more than 100 messages to test queue overflow
 	for i := 0; i < 105; i++ {
-		msg := []byte(`{"index":` + string(rune('0'+i%10)) + `}`)
+		msg := []byte(fmt.Sprintf(`{"index":%d}`, i))
 		client.Write(frameMessage(msg))
 	}
 	client.Close()
@@ -481,7 +487,7 @@ func TestHandleTCPConnImmediateEOF(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1", "")
+		handleTCPConn(wrappedServer, "", "")
 	}()
 
 	// Close immediately
@@ -505,7 +511,7 @@ func TestHandleTCPConnPartialLengthRead(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1", "")
+		handleTCPConn(wrappedServer, "", "")
 	}()
 
 	// Write only 2 bytes of the 4-byte length header, then close
@@ -530,7 +536,7 @@ func TestHandleTCPConnPartialDataRead(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "http://localhost:1", "")
+		handleTCPConn(wrappedServer, "", "")
 	}()
 
 	// Write length header saying 100 bytes, but only send 10

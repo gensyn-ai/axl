@@ -27,13 +27,6 @@ func TestNewA2AStream(t *testing.T) {
 	}
 }
 
-func TestA2AStreamGetID(t *testing.T) {
-	stream := NewA2AStream("http://localhost:9004")
-
-	if stream.GetID() != "a2a" {
-		t.Errorf("expected GetID to return 'a2a', got %s", stream.GetID())
-	}
-}
 
 func TestA2AStreamIsAllowed(t *testing.T) {
 	stream := NewA2AStream("http://localhost:9004")
@@ -166,10 +159,13 @@ func TestA2AStreamForwardNilMessage(t *testing.T) {
 }
 
 func TestA2AStreamForwardConnectionFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.Close()
+
 	stream := &A2AStream{
 		ID:     "a2a",
-		client: http.DefaultClient,
-		a2aURL: "http://localhost:1",
+		client: server.Client(),
+		a2aURL: server.URL,
 	}
 
 	a2aMsg := &api.A2AMessage{
@@ -192,5 +188,55 @@ func TestA2AStreamForwardConnectionFailure(t *testing.T) {
 	}
 	if a2aResp.Error == "" {
 		t.Error("expected error in response for connection failure")
+	}
+}
+
+func TestA2AStreamForwardAgentCard(t *testing.T) {
+	expectedCard := json.RawMessage(`{"name":"test-agent","url":"http://example.com"}`)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/.well-known/agent.json" {
+			t.Errorf("expected path /.well-known/agent.json, got %s", r.URL.Path)
+		}
+		if r.Header.Get("X-From-Peer-Id") != "frompeerid123" {
+			t.Errorf("expected X-From-Peer-Id frompeerid123, got %s", r.Header.Get("X-From-Peer-Id"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(expectedCard)
+	}))
+	defer server.Close()
+
+	stream := &A2AStream{
+		ID:     "a2a",
+		client: server.Client(),
+		a2aURL: server.URL,
+	}
+
+	a2aMsg := &api.A2AMessage{
+		A2A:       true,
+		AgentCard: true,
+	}
+
+	respBytes, err := stream.Forward(a2aMsg, "frompeerid123")
+	if err != nil {
+		t.Fatalf("Forward failed: %v", err)
+	}
+
+	var a2aResp api.A2AResponse
+	if err := json.Unmarshal(respBytes, &a2aResp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if !a2aResp.A2A {
+		t.Error("expected A2A to be true")
+	}
+	if string(a2aResp.Response) != string(expectedCard) {
+		t.Errorf("expected card %s, got %s", string(expectedCard), string(a2aResp.Response))
+	}
+	if a2aResp.Error != "" {
+		t.Errorf("expected no error, got %s", a2aResp.Error)
 	}
 }

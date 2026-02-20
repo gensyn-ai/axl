@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -65,14 +66,16 @@ func TestForwardToA2ANoFromPeerId(t *testing.T) {
 }
 
 func TestForwardToA2AConnectionFailure(t *testing.T) {
-	_, err := ForwardToA2A(json.RawMessage(`{}`), "peer-abc", http.DefaultClient, "http://localhost:1")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.Close()
+
+	_, err := ForwardToA2A(json.RawMessage(`{}`), "peer-abc", server.Client(), server.URL)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 
-	expectedPrefix := "failed to contact a2a server"
-	if len(err.Error()) < len(expectedPrefix) || err.Error()[:len(expectedPrefix)] != expectedPrefix {
-		t.Errorf("expected error to start with %q, got %q", expectedPrefix, err.Error())
+	if !strings.HasPrefix(err.Error(), "failed to contact a2a server") {
+		t.Errorf("expected error to start with %q, got %q", "failed to contact a2a server", err.Error())
 	}
 }
 
@@ -93,5 +96,61 @@ func TestForwardToA2AErrorResponse(t *testing.T) {
 	// A2A server error responses are returned as-is (they are valid JSON-RPC responses)
 	if string(result) != string(errorResponse) {
 		t.Errorf("expected response %s, got %s", string(errorResponse), string(result))
+	}
+}
+
+func TestGetAgentCardSuccess(t *testing.T) {
+	expectedCard := json.RawMessage(`{"name":"test-agent","url":"http://example.com","version":"1.0"}`)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/.well-known/agent.json" {
+			t.Errorf("expected path /.well-known/agent.json, got %s", r.URL.Path)
+		}
+		if r.Header.Get("X-From-Peer-Id") != "peer-xyz" {
+			t.Errorf("expected X-From-Peer-Id peer-xyz, got %s", r.Header.Get("X-From-Peer-Id"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(expectedCard)
+	}))
+	defer server.Close()
+
+	result, err := GetAgentCard("peer-xyz", server.Client(), server.URL)
+	if err != nil {
+		t.Fatalf("GetAgentCard failed: %v", err)
+	}
+	if string(result) != string(expectedCard) {
+		t.Errorf("expected card %s, got %s", string(expectedCard), string(result))
+	}
+}
+
+func TestGetAgentCardNoFromPeerId(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-From-Peer-Id") != "" {
+			t.Errorf("expected no X-From-Peer-Id header, got %s", r.Header.Get("X-From-Peer-Id"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"name":"agent"}`))
+	}))
+	defer server.Close()
+
+	_, err := GetAgentCard("", server.Client(), server.URL)
+	if err != nil {
+		t.Fatalf("GetAgentCard failed: %v", err)
+	}
+}
+
+func TestGetAgentCardConnectionFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.Close()
+
+	_, err := GetAgentCard("peer-abc", server.Client(), server.URL)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.HasPrefix(err.Error(), "failed to contact a2a server") {
+		t.Errorf("expected error to start with %q, got %q", "failed to contact a2a server", err.Error())
 	}
 }

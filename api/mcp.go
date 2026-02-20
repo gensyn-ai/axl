@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -19,6 +20,10 @@ var (
 	mcpSessions     = map[string]bool{}
 	mcpSessionMutex sync.RWMutex
 )
+
+var mcpDial = func(netStack *stack.Stack, tcpPort int, peerId string) (net.Conn, error) {
+	return dial.DialPeerConnection(netStack, tcpPort, peerId, 30*time.Second)
+}
 
 // MCPMessage wraps an MCP request with routing info
 type MCPMessage struct {
@@ -126,7 +131,7 @@ func handleMCPPost(
 		http.Error(w, fmt.Sprintf("Failed to marshal MCP envelope: %v", err), http.StatusInternalServerError)
 		return
 	}
-	conn, err := dial.DialPeerConnection(netStack, TCPPort, peerId, 30*time.Second)
+	conn, err := mcpDial(netStack, TCPPort, peerId)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 		return

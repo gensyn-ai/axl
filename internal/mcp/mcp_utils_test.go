@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -77,14 +78,16 @@ func TestForwardToRouterWithRouterError(t *testing.T) {
 }
 
 func TestForwardToRouterHTTPError(t *testing.T) {
-	// Use an invalid URL to trigger HTTP client error
-	_, err := ForwardToRouter("weather", json.RawMessage(`{}`), "key", http.DefaultClient, "http://localhost:1")
+	// Close the server immediately so any request gets "connection refused".
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	server.Close()
+
+	_, err := ForwardToRouter("weather", json.RawMessage(`{}`), "key", server.Client(), server.URL)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 
-	// Should contain "failed to contact router"
-	if err.Error()[:23] != "failed to contact route" {
+	if !strings.HasPrefix(err.Error(), "failed to contact router") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

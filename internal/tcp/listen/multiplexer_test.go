@@ -144,21 +144,9 @@ func TestMultiplexerWithMCPStream(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create multiplexer with real MCPStream
+	// Create multiplexer with real MCPStream pointing to the test server.
 	m := NewMultiplexer()
 	mcpStream := mcp.NewMCPStream(server.URL)
-
-	// Override the client to use the test server's client
-	// We need to access the internal client field
-	mcpStream = &mcp.MCPStream{
-		ID: "mcp",
-	}
-	// Since MCPStream fields are unexported, we'll create a new one pointing to our server
-	// This requires the MCPStream to be configurable or we test through the public interface
-
-	// Alternative: Use the actual NewMCPStream and just point it to our test server
-	mcpStream = mcp.NewMCPStream(server.URL)
-
 	m.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
 
 	// Simulate incoming MCP message
