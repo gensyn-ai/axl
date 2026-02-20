@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"time"
 
@@ -45,7 +44,6 @@ func (m *MCPStream) Forward(mcpMsg any, fromPeerId string) (respBytes []byte, er
 	mcpResp.Service = mcpMsgPtr.Service
 
 	if err != nil {
-		log.Printf("MCP forward error: %v", err)
 		mcpResp.Error = err.Error()
 	} else if respData != nil {
 		mcpResp.Response = respData

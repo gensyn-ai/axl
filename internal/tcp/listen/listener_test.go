@@ -256,10 +256,8 @@ func (t *testConn) RemoteAddr() net.Addr {
 }
 
 func TestHandleTCPConnNonMCPMessage(t *testing.T) {
-	// Clear the recv queue
-	api.RecvMutex.Lock()
-	api.RecvQueue = nil
-	api.RecvMutex.Unlock()
+	t.Cleanup(func() { api.DefaultRecvQueue.Reset() })
+	api.DefaultRecvQueue.Reset()
 
 	client, server := net.Pipe()
 
@@ -276,8 +274,7 @@ func TestHandleTCPConnNonMCPMessage(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		// Use a dummy router URL since MCP won't match
-		handleTCPConn(wrappedServer, "", "")
+		handleTCPConn(wrappedServer, NewMultiplexer())
 	}()
 
 	// Write message and close to trigger EOF
@@ -291,24 +288,20 @@ func TestHandleTCPConnNonMCPMessage(t *testing.T) {
 		t.Fatal("timeout waiting for handleTCPConn to finish")
 	}
 
-	// Check that message was added to RecvQueue
-	api.RecvMutex.Lock()
-	defer api.RecvMutex.Unlock()
-
-	if len(api.RecvQueue) != 1 {
-		t.Fatalf("expected 1 message in queue, got %d", len(api.RecvQueue))
+	// Check that message was added to DefaultRecvQueue
+	if api.DefaultRecvQueue.Len() != 1 {
+		t.Fatalf("expected 1 message in queue, got %d", api.DefaultRecvQueue.Len())
 	}
 
-	if string(api.RecvQueue[0].Data) != string(nonMCPData) {
-		t.Errorf("expected data %s, got %s", string(nonMCPData), string(api.RecvQueue[0].Data))
+	snap := api.DefaultRecvQueue.Snapshot()
+	if string(snap[0].Data) != string(nonMCPData) {
+		t.Errorf("expected data %s, got %s", string(nonMCPData), string(snap[0].Data))
 	}
 }
 
 func TestHandleTCPConnMultipleMessages(t *testing.T) {
-	// Clear the recv queue
-	api.RecvMutex.Lock()
-	api.RecvQueue = nil
-	api.RecvMutex.Unlock()
+	t.Cleanup(func() { api.DefaultRecvQueue.Reset() })
+	api.DefaultRecvQueue.Reset()
 
 	client, server := net.Pipe()
 	wrappedServer := &testConn{
@@ -325,7 +318,7 @@ func TestHandleTCPConnMultipleMessages(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "", "")
+		handleTCPConn(wrappedServer, NewMultiplexer())
 	}()
 
 	// Send all messages then close
@@ -340,16 +333,14 @@ func TestHandleTCPConnMultipleMessages(t *testing.T) {
 		t.Fatal("timeout")
 	}
 
-	api.RecvMutex.Lock()
-	defer api.RecvMutex.Unlock()
-
-	if len(api.RecvQueue) != 3 {
-		t.Fatalf("expected 3 messages in queue, got %d", len(api.RecvQueue))
+	if api.DefaultRecvQueue.Len() != 3 {
+		t.Fatalf("expected 3 messages in queue, got %d", api.DefaultRecvQueue.Len())
 	}
 
+	snap := api.DefaultRecvQueue.Snapshot()
 	for i, msg := range messages {
-		if string(api.RecvQueue[i].Data) != msg {
-			t.Errorf("message %d: expected %s, got %s", i, msg, string(api.RecvQueue[i].Data))
+		if string(snap[i].Data) != msg {
+			t.Errorf("message %d: expected %s, got %s", i, msg, string(snap[i].Data))
 		}
 	}
 }
@@ -398,10 +389,14 @@ func TestHandleTCPConnMCPMessageWithResponse(t *testing.T) {
 		responseData <- buf
 	}()
 
+	mux := NewMultiplexer()
+	mcpStream := mcp.NewMCPStream(routerServer.URL)
+	mux.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
+
 	handlerDone := make(chan struct{})
 	go func() {
 		defer close(handlerDone)
-		handleTCPConn(wrappedServer, routerServer.URL, "")
+		handleTCPConn(wrappedServer, mux)
 	}()
 
 	// Send the MCP message; handleTCPConn will forward it to the router and write back a response.
@@ -438,10 +433,8 @@ func TestHandleTCPConnMCPMessageWithResponse(t *testing.T) {
 }
 
 func TestHandleTCPConnQueueOverflow(t *testing.T) {
-	// Clear the recv queue
-	api.RecvMutex.Lock()
-	api.RecvQueue = nil
-	api.RecvMutex.Unlock()
+	t.Cleanup(func() { api.DefaultRecvQueue.Reset() })
+	api.DefaultRecvQueue.Reset()
 
 	client, server := net.Pipe()
 	wrappedServer := &testConn{
@@ -452,7 +445,7 @@ func TestHandleTCPConnQueueOverflow(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "", "")
+		handleTCPConn(wrappedServer, NewMultiplexer())
 	}()
 
 	// Send more than 100 messages to test queue overflow
@@ -468,12 +461,9 @@ func TestHandleTCPConnQueueOverflow(t *testing.T) {
 		t.Fatal("timeout")
 	}
 
-	api.RecvMutex.Lock()
-	defer api.RecvMutex.Unlock()
-
 	// Queue should be capped at 100
-	if len(api.RecvQueue) > 100 {
-		t.Errorf("expected queue length <= 100, got %d", len(api.RecvQueue))
+	if api.DefaultRecvQueue.Len() > 100 {
+		t.Errorf("expected queue length <= 100, got %d", api.DefaultRecvQueue.Len())
 	}
 }
 
@@ -487,7 +477,7 @@ func TestHandleTCPConnImmediateEOF(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "", "")
+		handleTCPConn(wrappedServer, NewMultiplexer())
 	}()
 
 	// Close immediately
@@ -511,7 +501,7 @@ func TestHandleTCPConnPartialLengthRead(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "", "")
+		handleTCPConn(wrappedServer, NewMultiplexer())
 	}()
 
 	// Write only 2 bytes of the 4-byte length header, then close
@@ -536,7 +526,7 @@ func TestHandleTCPConnPartialDataRead(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		handleTCPConn(wrappedServer, "", "")
+		handleTCPConn(wrappedServer, NewMultiplexer())
 	}()
 
 	// Write length header saying 100 bytes, but only send 10
@@ -551,5 +541,42 @@ func TestHandleTCPConnPartialDataRead(t *testing.T) {
 		// Success - handler returned on read error
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout - handler did not return on partial data read")
+	}
+}
+
+// --- peerIDFromAddr tests ---
+
+func TestPeerIDFromAddrValidIPv6(t *testing.T) {
+	addr := &net.TCPAddr{IP: net.ParseIP("200::1"), Port: 12345}
+	result := peerIDFromAddr(addr)
+	if len(result) != 64 {
+		t.Errorf("expected 64-char hex string, got %d chars: %q", len(result), result)
+	}
+}
+
+func TestPeerIDFromAddrNilIP(t *testing.T) {
+	addr := &net.TCPAddr{IP: nil, Port: 0}
+	result := peerIDFromAddr(addr)
+	if result != "" {
+		t.Errorf("expected empty string for nil IP, got %q", result)
+	}
+}
+
+func TestPeerIDFromAddrDifferentAddressesProduceDifferentIDs(t *testing.T) {
+	addr1 := &net.TCPAddr{IP: net.ParseIP("200::1"), Port: 12345}
+	addr2 := &net.TCPAddr{IP: net.ParseIP("201::1"), Port: 12345}
+	id1 := peerIDFromAddr(addr1)
+	id2 := peerIDFromAddr(addr2)
+	if id1 == id2 {
+		t.Errorf("expected different peer IDs for different addresses, both got %q", id1)
+	}
+}
+
+func TestPeerIDFromAddrSameAddressProducesSameID(t *testing.T) {
+	addr := &net.TCPAddr{IP: net.ParseIP("200::1"), Port: 12345}
+	id1 := peerIDFromAddr(addr)
+	id2 := peerIDFromAddr(addr)
+	if id1 != id2 {
+		t.Errorf("expected same peer ID for same address, got %q and %q", id1, id2)
 	}
 }

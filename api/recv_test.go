@@ -8,9 +8,7 @@ import (
 )
 
 func resetRecvQueue() {
-	RecvMutex.Lock()
-	defer RecvMutex.Unlock()
-	RecvQueue = nil
+	DefaultRecvQueue.Reset()
 }
 
 func TestHandleRecvEmptyQueue(t *testing.T) {
@@ -33,9 +31,7 @@ func TestHandleRecvReturnsMessage(t *testing.T) {
 	resetRecvQueue()
 
 	msg := ReceivedMessage{FromPeerId: "deadbeef", Data: []byte("hello")}
-	RecvMutex.Lock()
-	RecvQueue = append(RecvQueue, msg)
-	RecvMutex.Unlock()
+	DefaultRecvQueue.Push(msg)
 
 	req := httptest.NewRequest(http.MethodGet, "/recv", nil)
 	w := httptest.NewRecorder()
@@ -60,11 +56,7 @@ func TestHandleRecvReturnsMessage(t *testing.T) {
 		t.Fatalf("expected body %q, got %q", string(msg.Data), string(body))
 	}
 
-	RecvMutex.Lock()
-	remaining := len(RecvQueue)
-	RecvMutex.Unlock()
-
-	if remaining != 0 {
-		t.Fatalf("expected queue to be empty, got %d items", remaining)
+	if DefaultRecvQueue.Len() != 0 {
+		t.Fatalf("expected queue to be empty, got %d items", DefaultRecvQueue.Len())
 	}
 }

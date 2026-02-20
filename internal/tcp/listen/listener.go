@@ -166,6 +166,16 @@ func startTCPListener(tcpPort int, mcpRouterUrl string, a2aURL string) {
 
 	fmt.Printf("TCP Listener started on port %d\n", tcpPort)
 
+	mux := NewMultiplexer()
+	if mcpRouterUrl != "" {
+		mcpStream := mcp.NewMCPStream(mcpRouterUrl)
+		mux.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
+	}
+	if a2aURL != "" {
+		a2aStream := a2a.NewA2AStream(a2aURL)
+		mux.AddSource(a2aStream, func() any { return &api.A2AMessage{} })
+	}
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -176,7 +186,7 @@ func startTCPListener(tcpPort int, mcpRouterUrl string, a2aURL string) {
 		case connSem <- struct{}{}:
 			go func() {
 				defer func() { <-connSem }()
-				handleTCPConn(conn, mcpRouterUrl, a2aURL)
+				handleTCPConn(conn, mux)
 			}()
 		default:
 			log.Printf("Connection limit reached (%d), rejecting connection from %s",
@@ -186,36 +196,27 @@ func startTCPListener(tcpPort int, mcpRouterUrl string, a2aURL string) {
 	}
 }
 
-func handleTCPConn(conn net.Conn, mcpRouterUrl string, a2aURL string) {
+// peerIDFromAddr derives a hex-encoded Yggdrasil public key from a peer's network address.
+func peerIDFromAddr(addr net.Addr) string {
+	host, _, _ := net.SplitHostPort(addr.String())
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return ""
+	}
+	var addrBytes [16]byte
+	copy(addrBytes[:], ip.To16())
+	yggAddr := address.Address(addrBytes)
+	key := yggAddr.GetKey()
+	return hex.EncodeToString(key)
+}
+
+func handleTCPConn(conn net.Conn, mux *Multiplexer) {
 	defer conn.Close()
 
-	// Identify Sender
-	remoteAddrStr := conn.RemoteAddr().String()
-	host, _, _ := net.SplitHostPort(remoteAddrStr)
-
-	// Convert Host IPv6 -> PeerId
-	fromPeerId := ""
-	ip := net.ParseIP(host)
-	if ip != nil {
-		var addrBytes [16]byte
-		copy(addrBytes[:], ip.To16())
-		yggAddr := address.Address(addrBytes)
-		key := yggAddr.GetKey()
-		fromPeerId = hex.EncodeToString(key)
-	}
-
+	fromPeerId := peerIDFromAddr(conn.RemoteAddr())
 	log.Printf("Connection from peer %s...", fromPeerId[:16])
 
 	// Protocol: Length(4 bytes) + Data
-	multiplexer := NewMultiplexer()
-	if mcpRouterUrl != "" {
-		mcpStream := mcp.NewMCPStream(mcpRouterUrl)
-		multiplexer.AddSource(mcpStream, func() any { return &api.MCPMessage{} })
-	}
-	if a2aURL != "" {
-		a2aStream := a2a.NewA2AStream(a2aURL)
-		multiplexer.AddSource(a2aStream, func() any { return &api.A2AMessage{} })
-	}
 	for {
 		// Idle timeout: close if no new message arrives within the window
 		conn.SetReadDeadline(time.Now().Add(ConnIdleTimeout))
@@ -247,8 +248,8 @@ func handleTCPConn(conn net.Conn, mcpRouterUrl string, a2aURL string) {
 
 		// Use stream multiplexing for server applications (MCP), like HTTP/2
 		handled := false
-		for _, stream := range multiplexer.sources {
-			msgPtr := multiplexer.requestTypes[stream.GetID()]()
+		for _, stream := range mux.sources {
+			msgPtr := mux.requestTypes[stream.GetID()]()
 			if stream.IsAllowed(dataBuf, msgPtr) {
 				respBytes, err := stream.Forward(msgPtr, fromPeerId)
 				if err != nil {
@@ -265,17 +266,10 @@ func handleTCPConn(conn net.Conn, mcpRouterUrl string, a2aURL string) {
 
 		// Only queue for /recv if no stream handled the message
 		if !handled {
-			msg := api.ReceivedMessage{
+			api.DefaultRecvQueue.Push(api.ReceivedMessage{
 				FromPeerId: fromPeerId,
 				Data:       dataBuf,
-			}
-
-			api.RecvMutex.Lock()
-			if len(api.RecvQueue) >= 100 {
-				api.RecvQueue = api.RecvQueue[1:]
-			}
-			api.RecvQueue = append(api.RecvQueue, msg)
-			api.RecvMutex.Unlock()
+			})
 		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/yggdrasil-network/yggdrasil-go/src/address"
@@ -18,7 +19,7 @@ var (
 	ErrDialPeer      = errors.New("failed to reach peer")
 )
 
-func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerId string, timeout time.Duration) (*gonet.TCPConn, error) {
+func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerId string, timeout time.Duration) (net.Conn, error) {
 
 	peerIdBytes, err := hex.DecodeString(peerId)
 	if err != nil || len(peerIdBytes) != 32 {
