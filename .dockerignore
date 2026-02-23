@@ -42,5 +42,9 @@ Dockerfile
 # Build artifacts
 node
 
+# other artifacts
+assets/
+docs/
+
 # Claude
 .claude/
