@@ -6,6 +6,8 @@ Gensyn is building an open, permissionless, P2P network for decentralized agenti
 
 This project builds upon the Yggdrasil network stack with gvisor/tcp to provide a standalone network node with a local HTTP API bridge. It allows applications (e.g., serving MoE inference, AI agents, etc.) to send/receive data to/from other nodes without requiring a system-wide TUN interface or root privileges.
 
+<img src="assets/distributed-agents-cartoon.png" alt="network cartoon" width="50%">
+
 **Key features:**
 - **No TUN required** — runs entirely in userspace using gVisor's network stack
 - **No port forwarding needed** — connects outbound to peers; receives data over the same connection
