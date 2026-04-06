@@ -1,6 +1,6 @@
-# Gensyn Node
+# AXL
 
-Gensyn is building an open, permissionless, P2P network for decentralized agentic and AI/ML applications.  This repository provides the entrypoint to the Gensyn network.  The node provides the communication layer for agents and AI applications to exchange data directly with each other, forgoing any centralized services.  
+Gensyn is building an open, permissionless, P2P network for decentralized agentic and AI/ML applications.  This repository provides a tool to minimize friction when spinning up P2P networks.  It provides a node as an entrypoint into a decentralized P2P network with an api bridge for simple application interface.  The node provides the communication layer for agents and AI applications to exchange data directly with each other, forgoing any centralized services.  
 
 ## Overview
 
@@ -23,12 +23,38 @@ openssl genpkey -algorithm ed25519 -out private.pem # or provide your own key
 
 See [Configuration](docs/configuration.md) for build details, CLI flags, and `node-config.json` options.
 
+### Public Nodes
+At least one public node is required for spinning up fresh networks. A public node must meet two criteria:
+1. If behind a firewall, configure the host machine to expose a port such that the machine is reachable to network traffic.  
+2. configure node-config.json to listen on the port
+
+
+#### Example Config
+For example, if you were to run several machines on a LAN in a hub and spoke configuration, you could set the config of the listening machine to 
+```json
+{
+  "PrivateKeyPath": "private.pem",
+  "Peers": [
+  ],
+  "Listen": ["tls://0.0.0.0:9001"]
+}
+```
+With the private nodes peering to the listening node's IP address
+```json
+{
+  "PrivateKeyPath": "private.pem",
+  "Peers": [
+    "tls://192.168.0.22:9001"
+  ],
+  "Listen": []
+}
+```
+
 ## Philosophy
 
 Our intent is to provide a simple, permissionless, and secure communication layer for AI/ML workflows.  This node is agnostic to the application layer and simply provides an interface for applications to build upon.  Enforcing the separation of concerns between the network layer and the application layer allows for greater flexibility and scalability.  We are excited to see what you build!
 
-### Public Nodes
-We encourage anyone to run a public node to help bootstrap the network.  To run a public node one must expose a public IP address and port, and then run the node with the `-listen` flag or setting the config option.
+We encourage anyone to run a public node to help bootstrap the network, or just spin up your own P2P network in isolation.
 
 ## Documentation
 
