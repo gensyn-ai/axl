@@ -379,14 +379,6 @@ class HeaderPanel(Vertical):
         border: solid #B0C0D0;
         color: #2D4A62;
     }
-    HeaderPanel #header-keybar {
-        text-align: center;
-        color: #3D5A78;
-        background: #D8E8F4;
-        border-top: solid #A8B8C8;
-        padding: 0 1;
-        height: 1;
-    }
     """
 
     def __init__(
@@ -421,7 +413,6 @@ class HeaderPanel(Vertical):
             id="header-menubar",
         )
         yield Static(self._build_body_markup(), id="header-body")
-        yield Static(_KEYBAR_MARKUP, id="header-keybar")
 
     def _build_body_markup(self) -> str:
         name = escape(self._human_name) if self._human_name else "…"
@@ -451,6 +442,10 @@ class HeaderPanel(Vertical):
             )
         if not self._session_ready:
             parts.append("[#6B8AA8 italic]Starting session…[/]\n")
+        parts.append(
+            "[#8FA4B8]────────────────────────────────────────[/]\n"
+            + _KEYBAR_MARKUP
+        )
         return "".join(parts)
 
     def _refresh_body(self) -> None:

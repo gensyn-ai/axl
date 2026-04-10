@@ -442,6 +442,10 @@ class HeaderPanel(Vertical):
             )
         if not self._session_ready:
             parts.append("[#6B8AA8 italic]Starting session…[/]\n")
+        parts.append(
+            "[#8FA4B8]────────────────────────────────────────[/]\n"
+            + _KEYBAR_MARKUP
+        )
         return "".join(parts)
 
     def _refresh_body(self) -> None:
