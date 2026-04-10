@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"example.com/api"
+	"github.com/gensyn-ai/axl/api"
 )
 
 func TestNewA2AStream(t *testing.T) {

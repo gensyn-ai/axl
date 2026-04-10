@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"example.com/api"
+	"github.com/gensyn-ai/axl/api"
 )
 
 type MCPStream struct {

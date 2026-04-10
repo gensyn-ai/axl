@@ -1,4 +1,4 @@
-module example.com
+module github.com/gensyn-ai/axl
 
 go 1.25.5
 

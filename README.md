@@ -14,6 +14,8 @@ This project builds upon the Yggdrasil network stack with gvisor/tcp to provide 
 - **Simple HTTP API** — send/recv binary data, query network topology
 
 ## Quick Start
+### Requirements
+- go1.25.7 or earlier
 
 ```bash
 go build -o node ./cmd/node/

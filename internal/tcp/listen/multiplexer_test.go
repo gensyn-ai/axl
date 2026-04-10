@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"example.com/api"
-	"example.com/internal/mcp"
+	"github.com/gensyn-ai/axl/api"
+	"github.com/gensyn-ai/axl/internal/mcp"
 )
 
 func TestNewMultiplexer(t *testing.T) {

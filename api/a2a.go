@@ -11,7 +11,7 @@ import (
 
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 
-	"example.com/internal/tcp/dial"
+	"github.com/gensyn-ai/axl/internal/tcp/dial"
 )
 
 var a2aDial = func(netStack *stack.Stack, tcpPort int, peerId string) (net.Conn, error) {

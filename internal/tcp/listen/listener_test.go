@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/api"
-	"example.com/internal/mcp"
+	"github.com/gensyn-ai/axl/api"
+	"github.com/gensyn-ai/axl/internal/mcp"
 )
 
 // --- sendResponse tests ---

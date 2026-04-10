@@ -8,9 +8,9 @@ import (
 	"net"
 	"time"
 
-	"example.com/api"
-	"example.com/internal/a2a"
-	"example.com/internal/mcp"
+	"github.com/gensyn-ai/axl/api"
+	"github.com/gensyn-ai/axl/internal/a2a"
+	"github.com/gensyn-ai/axl/internal/mcp"
 
 	"github.com/gologme/log"
 	"github.com/yggdrasil-network/yggdrasil-go/src/address"

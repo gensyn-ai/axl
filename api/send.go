@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"example.com/internal/tcp/dial"
+	"github.com/gensyn-ai/axl/internal/tcp/dial"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
 

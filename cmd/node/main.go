@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"example.com/api"
-	"example.com/internal/tcp/listen"
+	"github.com/gensyn-ai/axl/api"
+	"github.com/gensyn-ai/axl/internal/tcp/listen"
 
 	"github.com/gologme/log"
 	"github.com/yggdrasil-network/yggdrasil-go/src/config"

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"example.com/api"
+	"github.com/gensyn-ai/axl/api"
 )
 
 func TestNewMCPStream(t *testing.T) {
