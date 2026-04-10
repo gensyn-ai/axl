@@ -72,6 +72,7 @@ def _bridge_loop(
     agent_name: str,
     group_id: str,
     members: list[str],
+    trigger: str = "",
 ) -> None:
     """Poll the dispatcher's agent queue and forward to OpenClaw.
 
@@ -108,6 +109,9 @@ def _bridge_loop(
 
         text = msg.get("text", "")
         if not text.strip():
+            continue
+
+        if trigger and trigger.lower() not in text.lower():
             continue
 
         sender = msg.get("from", "someone")
@@ -203,6 +207,11 @@ def main() -> None:
         default=os.environ.get("OPENCLAW_SYSTEM_PROMPT", ""),
         help="System prompt for the agent (env: OPENCLAW_SYSTEM_PROMPT)",
     )
+    grp_oc.add_argument(
+        "--trigger", type=str,
+        default=os.environ.get("OPENCLAW_TRIGGER", "@openclaw"),
+        help="Agent only responds to messages containing this word (env: OPENCLAW_TRIGGER, default: @openclaw). Set to empty string to respond to everything.",
+    )
 
     args = ap.parse_args()
 
@@ -294,12 +303,15 @@ def main() -> None:
                 agent_name=args.agent_name,
                 group_id=args.group,
                 members=members,
+                trigger=args.trigger,
             ),
             daemon=True,
         ).start()
 
+        trigger_display = f'"{args.trigger}"' if args.trigger else "(all messages)"
         print(f"  OpenClaw enabled: {args.agent_name}")
         print(f"  Gateway: {gateway_url}  Model: {args.model}")
+        print(f"  Trigger: {trigger_display}")
         print(f"  Dispatcher: port {disp_port} (auto)")
         print()
 

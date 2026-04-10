@@ -32,27 +32,46 @@ The key gives your node a persistent identity (same public key across restarts).
 
 Leave this running (**Terminal 1**). The included config peers with the bootstrap nodes automatically — you'll see your public key in the output.
 
-## 4. Join the chat
+## 4. Get your public key
+
+Your node prints it on startup. Or run:
+
+```bash
+curl -s http://127.0.0.1:9002/topology | python3 -c "import sys,json; print(json.load(sys.stdin)['our_public_key'])"
+```
+
+**Send this key to the people you want to chat with, and get theirs.** This is how AXL knows who to send messages to. Keys look like: `1ee862344fb283395143ac9775150d2e5936efd6e78ed0db83e3f290d3d539ef`
+
+## 5. Join the chat
 
 Open a second terminal (**Terminal 2**):
 
 ```bash
 cd axl/examples/group-chat
-python3 group_chat.py --port 9002 --group alpha --auto
+python3 group_chat.py --port 9002 --group alpha --members THEIR_KEY
 ```
 
-That's it. You're in. Send a message and anyone else on the mesh with the same `--group` will see it.
+Replace `THEIR_KEY` with the other person's public key. For multiple people, comma-separate them:
+
+```bash
+python3 group_chat.py --port 9002 --group alpha --members KEY1,KEY2,KEY3
+```
+
+That's it. You're in.
+
+> **Note:** `--auto` works for local testing (nodes on the same machine), but for chatting with someone on a different machine, always use `--members` with their public key.
 
 ### With OpenClaw (AI agent)
 
 Add `--openclaw` and your gateway token to have your AI agent join the chat:
 
 ```bash
-python3 group_chat.py --port 9002 --group alpha --auto \
+python3 group_chat.py --port 9002 --group alpha \
+    --members THEIR_KEY \
     --openclaw --gateway-token YOUR_TOKEN
 ```
 
-Your agent responds to every message in the group — including yours. No extra terminals needed.
+Your agent only responds when someone says **`@openclaw`** in a message. Type normally for human-only conversation; mention `@openclaw` when you want the AI to chime in. To change the trigger word, use `--trigger @mybot`. To make it respond to everything (old behavior), use `--trigger ""`.
 
 ---
 
@@ -113,9 +132,9 @@ Then just `--openclaw` works without `--gateway-token`.
 | Terminal | Command |
 |----------|---------|
 | 1 | `./node -config node-config.json` |
-| 2 | `python3 group_chat.py --port 9002 --group alpha --auto --openclaw` |
+| 2 | `python3 group_chat.py --port 9002 --group alpha --members THEIR_KEY` |
 
-Drop `--openclaw` if you don't want the AI.
+Add `--openclaw` to bring your AI agent into the chat. Drop it for human-only.
 
 ---
 
@@ -147,6 +166,7 @@ The `node-config.json` has bootstrap node addresses in `Peers`. Everyone points 
 | `--gateway` | `OPENCLAW_GATEWAY_URL` | `http://127.0.0.1:18789` |
 | `--model` | `OPENCLAW_MODEL` | `openclaw/default` |
 | `--system-prompt` | `OPENCLAW_SYSTEM_PROMPT` | *(none)* |
+| `--trigger` | `OPENCLAW_TRIGGER` | `@openclaw` |
 
 ### Files in this folder
 

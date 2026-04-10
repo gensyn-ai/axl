@@ -196,6 +196,11 @@ def main() -> None:
         default=os.environ.get("OPENCLAW_SYSTEM_PROMPT", ""),
         help="Optional system prompt prepended to each request (env: OPENCLAW_SYSTEM_PROMPT)",
     )
+    ap.add_argument(
+        "--trigger", type=str,
+        default=os.environ.get("OPENCLAW_TRIGGER", "@openclaw"),
+        help="Agent only responds to messages containing this word (env: OPENCLAW_TRIGGER, default: @openclaw). Set to empty string to respond to everything.",
+    )
 
     args = ap.parse_args()
 
@@ -251,7 +256,9 @@ def main() -> None:
     print(f"  Dispatcher: {recv_url}")
     print(f"  Gateway:    {gateway_url}")
     print(f"  Model:      {args.model}")
+    trigger_display = f'"{args.trigger}"' if args.trigger else "(all messages)"
     print(f"  Members:    {len(members)} peer(s)")
+    print(f"  Trigger:    {trigger_display}")
     print(f"  Our key:    {our_key[:12]}…")
     print()
     print("  Listening for messages…  (Ctrl+C to stop)")
@@ -298,6 +305,9 @@ def main() -> None:
             sender = msg.get("from", "someone")
             text = msg.get("text", "")
             if not text.strip():
+                continue
+
+            if args.trigger and args.trigger.lower() not in text.lower():
                 continue
 
             msg_count += 1
