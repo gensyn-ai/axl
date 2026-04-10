@@ -38,6 +38,8 @@ import json
 import os
 import sys
 import time
+from collections import deque
+from collections.abc import Sequence
 from datetime import datetime
 
 import requests
@@ -70,15 +72,19 @@ def _fan_out(
     our_key: str,
     group_id: str,
     text: str,
-) -> int:
-    """Send a group message to every member. Returns count of failures."""
-    payload = json.dumps({
+    from_agent: bool = False,
+) -> tuple[int, dict]:
+    """Send a group message to every member. Returns (failure count, message dict)."""
+    msg: dict = {
         "type": "group_chat",
         "group_id": group_id,
         "from": our_name,
         "from_key": our_key,
         "text": text,
-    }).encode()
+    }
+    if from_agent:
+        msg["_from_agent"] = True
+    payload = json.dumps(msg).encode()
 
     failed = 0
     for key in members:
@@ -97,7 +103,82 @@ def _fan_out(
                 failed += 1
         except Exception:
             failed += 1
-    return failed
+    return failed, msg
+
+
+def _strip_agent_mention(text: str, agent_name: str) -> str:
+    """Remove @agent_name from text sent to the gateway.
+
+    Otherwise the model often treats it like an internal OpenClaw session id and
+    replies with "no such session" disclaimers before answering.
+    """
+    if not agent_name.strip():
+        return text
+    needle = f"@{agent_name}"
+    out = text.replace(needle, "")
+    return " ".join(out.split())
+
+
+def _context_max_messages() -> int:
+    try:
+        v = int(os.environ.get("OPENCLAW_CONTEXT_MAX_MESSAGES", "80"))
+        return max(5, min(v, 500))
+    except ValueError:
+        return 80
+
+
+def new_transcript_buffer() -> deque[tuple[str, str]]:
+    """Rolling buffer of (sender, text) for prompts; cap via OPENCLAW_CONTEXT_MAX_MESSAGES."""
+    return deque(maxlen=_context_max_messages())
+
+
+def build_openclaw_group_prompt(
+    sender: str,
+    raw_text: str,
+    agent_name: str,
+    system_prompt: str = "",
+    *,
+    transcript: Sequence[tuple[str, str]],
+    respond_to_all: bool = False,
+) -> str:
+    """User message for /v1/chat/completions — full recent thread + instructions.
+
+    Every human message is appended to ``transcript`` in the bridge loop. We only *call*
+    OpenClaw on @mention (or every message if respond_to_all), but each call includes
+    this transcript so the model can use messages that were never individually forwarded.
+    """
+    rows = list(transcript)
+    if not rows:
+        rows = [(sender, raw_text)]
+
+    lines_block = "Recent group messages (oldest first):\n"
+    for s, t in rows:
+        lines_block += f"{s}: {t}\n"
+    lines_block += "\n"
+
+    body_stripped = _strip_agent_mention(raw_text, agent_name).strip()
+
+    if respond_to_all:
+        tail = (
+            f'You are "{agent_name}". Respond to the **last** message only, '
+            "using all lines above as context. Be concise.\n"
+            f'Do not claim you are offline or that "{agent_name}" does not exist.\n'
+        )
+    else:
+        tail = (
+            f'You are "{agent_name}". Only the **last** message @-mentioned you; '
+            "earlier lines are background you may use (including messages that did not ping you). "
+            "Answer what the last line asks, using that full context.\n"
+            f'Do not claim you are offline or that "{agent_name}" does not exist.\n'
+        )
+
+    if body_stripped:
+        tail += f"\n(Last line with @-tag stripped for clarity: {body_stripped})\n"
+
+    out = lines_block + tail
+    if system_prompt:
+        return f"[System: {system_prompt}]\n\n{out}"
+    return out
 
 
 def _ask_openclaw(
@@ -193,12 +274,16 @@ def main() -> None:
         help="Optional system prompt prepended to each request (env: OPENCLAW_SYSTEM_PROMPT)",
     )
     ap.add_argument(
-        "--trigger", type=str,
-        default=os.environ.get("OPENCLAW_TRIGGER", "@openclaw"),
-        help="Agent only responds to messages containing this word (env: OPENCLAW_TRIGGER, default: @openclaw). Set to empty string to respond to everything.",
+        "--openclaw-respond-all", action="store_true",
+        help="Respond to every message (no @mention). Default: only when the message contains "
+        "@NAME exactly (NAME is --name, case-sensitive substring). Env: OPENCLAW_RESPOND_ALL=1",
     )
 
     args = ap.parse_args()
+    respond_to_all = args.openclaw_respond_all or (
+        os.environ.get("OPENCLAW_RESPOND_ALL", "").strip().lower()
+        in ("1", "true", "yes")
+    )
 
     node_url = f"http://127.0.0.1:{args.node_port}"
     dispatcher_url = f"http://127.0.0.1:{args.dispatcher_port}"
@@ -252,9 +337,14 @@ def main() -> None:
     print(f"  Dispatcher: {recv_url}")
     print(f"  Gateway:    {gateway_url}")
     print(f"  Model:      {args.model}")
-    trigger_display = f'"{args.trigger}"' if args.trigger else "(all messages)"
+    mention = f"@{args.name}"
+    filter_display = (
+        "every message (--openclaw-respond-all)"
+        if respond_to_all
+        else f'message contains "{mention}" exactly (case-sensitive)'
+    )
     print(f"  Members:    {len(members)} peer(s)")
-    print(f"  Trigger:    {trigger_display}")
+    print(f"  Replies to: {filter_display}")
     print(f"  Our key:    {our_key[:12]}…")
     print()
     print("  Listening for messages…  (Ctrl+C to stop)")
@@ -264,6 +354,7 @@ def main() -> None:
 
     msg_count = 0
     err_streak = 0
+    history = new_transcript_buffer()
 
     try:
         while True:
@@ -295,8 +386,7 @@ def main() -> None:
                 continue
             if msg.get("group_id") != args.group:
                 continue
-            from_key = msg.get("from_key") or msg.get("_from_peer", "")
-            if from_key == our_key:
+            if msg.get("_from_agent"):
                 continue
 
             sender = msg.get("from", "someone")
@@ -304,15 +394,23 @@ def main() -> None:
             if not text.strip():
                 continue
 
-            if args.trigger and args.trigger.lower() not in text.lower():
-                continue
+            history.append((sender, text))
+
+            if not respond_to_all:
+                if f"@{args.name}" not in text:
+                    continue
 
             msg_count += 1
             _log("◀ IN ", f"{sender}: {text}")
 
-            prompt = f"{sender} says: {text}"
-            if args.system_prompt:
-                prompt = f"[System: {args.system_prompt}]\n\n{prompt}"
+            prompt = build_openclaw_group_prompt(
+                sender,
+                text,
+                args.name,
+                args.system_prompt,
+                transcript=list(history),
+                respond_to_all=respond_to_all,
+            )
 
             try:
                 reply = _ask_openclaw(
@@ -333,9 +431,21 @@ def main() -> None:
 
             _log("▶ OUT", f"{args.name}: {reply[:120]}{'…' if len(reply) > 120 else ''}")
 
-            failed = _fan_out(node_url, members, args.name, our_key, args.group, reply)
+            failed, response_msg = _fan_out(
+                node_url, members, args.name, our_key, args.group, reply,
+                from_agent=True,
+            )
             if failed:
                 _log("⚡", f"Fan-out: {failed}/{len(members)} send(s) failed")
+
+            try:
+                requests.post(
+                    f"{dispatcher_url}/broadcast",
+                    json=response_msg,
+                    timeout=5,
+                )
+            except Exception:
+                pass
 
             time.sleep(POLL_INTERVAL)
 

@@ -71,7 +71,13 @@ python3 group_chat.py --port 9002 --group alpha \
     --openclaw --gateway-token YOUR_TOKEN
 ```
 
-Your agent only responds when someone says **`@openclaw`** in a message. Type normally for human-only conversation; mention `@openclaw` when you want the AI to chime in. To change the trigger word, use `--trigger @mybot`. To make it respond to everything (old behavior), use `--trigger ""`.
+**Naming in the TUI:** With `--openclaw`, you are prompted for **your display name**, then **your agent’s name** (second screen). There is no `--agent-name` or `OPENCLAW_DISPLAY_NAME` shortcut in `group_chat.py` — the agent label is always chosen in the UI.
+
+**Mentions:** By default the agent **only sends a reply into the chat** when a message contains **`@YourAgentName`** exactly (same spelling and capitalization as you typed in the TUI, e.g. `@JdubsBot` not `@jdubsbot`). Use `--openclaw-respond-all` or `OPENCLAW_RESPOND_ALL=1` if you want it to answer **every** message without an `@`.
+
+**Transcript (context):** The bridge **records** recent group messages in memory. When someone `@`-mentions your agent, **one** request is sent to OpenClaw that includes a **rolling transcript** (default last **80** lines) plus the new instruction — so the model can use earlier lines that never triggered a call by themselves (e.g. “blue red green” before “`@agent` what colors?”). Increase or shrink the window with `OPENCLAW_CONTEXT_MAX_MESSAGES` (5–500). Transcript **resets** when you restart `group_chat.py`.
+
+**Standalone bridge:** If you run `openclaw_bridge.py` by itself (not the unified launcher), agent naming uses `--name` / `OPENCLAW_DISPLAY_NAME` as documented for that script.
 
 ---
 
@@ -136,6 +142,8 @@ Then just `--openclaw` works without `--gateway-token`.
 
 Add `--openclaw` to bring your AI agent into the chat. Drop it for human-only.
 
+With OpenClaw: you name the agent in the TUI; replies default to **`@AgentName` only**; each reply request can include up to **`OPENCLAW_CONTEXT_MAX_MESSAGES`** (default `80`) lines of prior chat as context.
+
 ---
 
 ## Reference
@@ -162,11 +170,15 @@ The `node-config.json` has bootstrap node addresses in `Peers`. Everyone points 
 |------|---------|---------|
 | `--openclaw` | — | off |
 | `--gateway-token` | `OPENCLAW_GATEWAY_TOKEN` | *(required)* |
-| `--agent-name` | `OPENCLAW_DISPLAY_NAME` | `OpenClaw` |
 | `--gateway` | `OPENCLAW_GATEWAY_URL` | `http://127.0.0.1:18789` |
 | `--model` | `OPENCLAW_MODEL` | `openclaw/default` |
 | `--system-prompt` | `OPENCLAW_SYSTEM_PROMPT` | *(none)* |
-| `--trigger` | `OPENCLAW_TRIGGER` | `@openclaw` |
+| `--openclaw-respond-all` | `OPENCLAW_RESPOND_ALL` | off; agent only replies when the message contains `@AGENT_NAME` exactly |
+| *(transcript depth)* | `OPENCLAW_CONTEXT_MAX_MESSAGES` | `80` (clamped 5–500) — how many recent lines are included in the prompt when an @mention fires |
+
+**`group_chat.py` agent name:** Always the **second TUI prompt** after your display name (no CLI/env override).
+
+**What gets sent to OpenClaw (default mode):** The HTTP API is called **only** when a message contains your `@AgentName` (or on every message if `--openclaw-respond-all`). Each such call includes the **in-memory transcript** so the model sees prior messages as context. Messages without `@` are **not** sent to the API by themselves — they only appear inside that transcript on a later @mention. The `@` token is stripped from the text sent to the gateway where helpful, to avoid confusing OpenClaw’s session handling.
 
 ### Files in this folder
 
@@ -190,3 +202,5 @@ The `node-config.json` has bootstrap node addresses in `Peers`. Everyone points 
 | "address already in use" | Kill the old process: `lsof -ti :9002 \| xargs kill` |
 | "urllib3 NotOpenSSLWarning" | Harmless on macOS, ignore it |
 | Messages not appearing | Everyone must use the same `--group` value |
+| Agent ignores earlier lines when @mentioned | Restart `group_chat.py` only clears the transcript; ensure those lines arrived after the bridge started. Raise `OPENCLAW_CONTEXT_MAX_MESSAGES` if the chat is very long |
+| Agent says “no session” / odd disclaimers | Usually fixed in current bridge prompts; update `group_chat.py` / `openclaw_bridge.py` from the repo if you’re on an old copy |

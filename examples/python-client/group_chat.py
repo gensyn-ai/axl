@@ -9,10 +9,9 @@ One command for everything: TUI, dispatcher, and optional OpenClaw bridge.
     # Human + your OpenClaw agent (dispatcher + bridge spun up automatically):
     python3 group_chat.py --port 9002 --group alpha --auto --openclaw
 
-    # With custom names and gateway token:
+    # With gateway token (you name your agent in the TUI after your display name):
     python3 group_chat.py --port 9002 --group alpha --auto \\
-        --name Alice --openclaw --agent-name "Alice's OpenClaw" \\
-        --gateway-token mytoken
+        --openclaw --gateway-token mytoken
 
 Dependencies:
     pip install textual requests
@@ -32,7 +31,12 @@ import requests
 
 from dispatcher import Dispatcher, DispatcherHandler, _recv_loop
 from group_chat_tui import GroupChatApp, _topology, _all_peers
-from openclaw_bridge import _ask_openclaw, _fan_out as _bridge_fan_out
+from openclaw_bridge import (
+    _ask_openclaw,
+    _fan_out as _bridge_fan_out,
+    build_openclaw_group_prompt,
+    new_transcript_buffer,
+)
 
 BRIDGE_POLL = 0.5
 
@@ -72,12 +76,14 @@ def _bridge_loop(
     agent_name: str,
     group_id: str,
     members: list[str],
+    respond_to_all: bool = False,
 ) -> None:
     """Poll the dispatcher's agent queue and forward to OpenClaw.
 
     Runs forever in a daemon thread.
     """
     recv_url = f"{dispatcher_url}/recv/{queue_name}"
+    history = new_transcript_buffer()
 
     while True:
         try:
@@ -103,8 +109,7 @@ def _bridge_loop(
             continue
         if msg.get("group_id") != group_id:
             continue
-        from_key = msg.get("from_key") or msg.get("_from_peer", "")
-        if from_key == our_key:
+        if msg.get("_from_agent"):
             continue
 
         text = msg.get("text", "")
@@ -112,16 +117,41 @@ def _bridge_loop(
             continue
 
         sender = msg.get("from", "someone")
-        prompt = f"{sender} says: {text}"
-        if system_prompt:
-            prompt = f"[System: {system_prompt}]\n\n{prompt}"
+        history.append((sender, text))
+
+        if not respond_to_all:
+            mention = f"@{agent_name}"
+            if mention not in text:
+                continue
+
+        prompt = build_openclaw_group_prompt(
+            sender,
+            text,
+            agent_name,
+            system_prompt,
+            transcript=list(history),
+            respond_to_all=respond_to_all,
+        )
 
         try:
             reply = _ask_openclaw(gateway_url, token, prompt, session_key, model)
         except Exception:
             continue
 
-        _bridge_fan_out(node_url, members, agent_name, our_key, group_id, reply)
+        failed, response_msg = _bridge_fan_out(
+            node_url, members, agent_name, our_key, group_id, reply,
+            from_agent=True,
+        )
+
+        try:
+            requests.post(
+                f"{dispatcher_url}/broadcast",
+                json=response_msg,
+                timeout=5,
+            )
+        except Exception:
+            pass
+
         time.sleep(BRIDGE_POLL)
 
 
@@ -133,8 +163,8 @@ def main() -> None:
             "Examples:\n"
             "  python3 group_chat.py --port 9002 --group alpha --auto\n"
             "  python3 group_chat.py --port 9002 --group alpha --auto --openclaw\n"
-            "  python3 group_chat.py --port 9002 --group alpha --auto "
-            '--openclaw --agent-name "My OpenClaw"\n'
+            "With --openclaw, your agent's display name is always set in the TUI "
+            "(second prompt).\n"
         ),
     )
 
@@ -164,12 +194,7 @@ def main() -> None:
     grp_oc = ap.add_argument_group("openclaw")
     grp_oc.add_argument(
         "--openclaw", action="store_true",
-        help="Enable OpenClaw agent (starts dispatcher + bridge automatically)",
-    )
-    grp_oc.add_argument(
-        "--agent-name", type=str,
-        default=os.environ.get("OPENCLAW_DISPLAY_NAME", "OpenClaw"),
-        help="Agent display name in chat (env: OPENCLAW_DISPLAY_NAME, default: OpenClaw)",
+        help="Enable OpenClaw agent (dispatcher + bridge; you name the agent in the TUI)",
     )
     grp_oc.add_argument(
         "--gateway", type=str,
@@ -190,6 +215,12 @@ def main() -> None:
         "--system-prompt", type=str,
         default=os.environ.get("OPENCLAW_SYSTEM_PROMPT", ""),
         help="System prompt for the agent (env: OPENCLAW_SYSTEM_PROMPT)",
+    )
+    grp_oc.add_argument(
+        "--openclaw-respond-all", action="store_true",
+        help="Agent replies to every message (no @mention). Default: only when the message "
+        "contains @AGENT_NAME as an exact substring (case-sensitive). "
+        "Env: OPENCLAW_RESPOND_ALL=1",
     )
 
     args = ap.parse_args()
@@ -224,14 +255,32 @@ def main() -> None:
 
     dispatcher_url: str | None = None
     dispatcher_queue = "chat"
+    tui_preset_agent: str | None = None
+    tui_on_agent_named = None
 
     if args.openclaw:
         gateway_url = args.gateway.rstrip("/")
         token = args.gateway_token
 
+        check_headers: dict[str, str] = {}
+        if token:
+            check_headers["Authorization"] = f"Bearer {token}"
+
         try:
-            r = requests.get(f"{gateway_url}/v1/models", timeout=5)
-            if r.status_code >= 400:
+            r = requests.get(
+                f"{gateway_url}/v1/models", headers=check_headers, timeout=5,
+            )
+            if r.status_code == 401:
+                print(
+                    f"OpenClaw gateway at {gateway_url} returned 401 (Unauthorized).\n"
+                    "The gateway requires an auth token. Pass it via:\n\n"
+                    "  --gateway-token YOUR_TOKEN\n"
+                    "  or set OPENCLAW_GATEWAY_TOKEN=YOUR_TOKEN\n\n"
+                    "Find your token in ~/.openclaw/openclaw.json under\n"
+                    "gateway.auth.token, or run:  openclaw token\n"
+                )
+                sys.exit(1)
+            elif r.status_code >= 400:
                 print(
                     f"OpenClaw gateway at {gateway_url} returned {r.status_code}.\n"
                     "Make sure the chatCompletions endpoint is enabled in\n"
@@ -251,27 +300,46 @@ def main() -> None:
 
         session_key = f"axl-group-{args.group}"
 
-        threading.Thread(
-            target=_bridge_loop,
-            kwargs=dict(
-                dispatcher_url=dispatcher_url,
-                queue_name="agent",
-                node_url=node_url,
-                gateway_url=gateway_url,
-                token=token,
-                model=args.model,
-                session_key=session_key,
-                system_prompt=args.system_prompt,
-                our_key=our_key,
-                agent_name=args.agent_name,
-                group_id=args.group,
-                members=members,
-            ),
-            daemon=True,
-        ).start()
+        respond_to_all = args.openclaw_respond_all or (
+            os.environ.get("OPENCLAW_RESPOND_ALL", "").strip().lower()
+            in ("1", "true", "yes")
+        )
 
-        print(f"  OpenClaw enabled: {args.agent_name}")
+        def run_bridge(agent_nm: str) -> None:
+            threading.Thread(
+                target=_bridge_loop,
+                kwargs=dict(
+                    dispatcher_url=dispatcher_url,
+                    queue_name="agent",
+                    node_url=node_url,
+                    gateway_url=gateway_url,
+                    token=token,
+                    model=args.model,
+                    session_key=session_key,
+                    system_prompt=args.system_prompt,
+                    our_key=our_key,
+                    agent_name=agent_nm,
+                    group_id=args.group,
+                    members=members,
+                    respond_to_all=respond_to_all,
+                ),
+                daemon=True,
+            ).start()
+
+        # Agent name always comes from the second TUI modal — no CLI/env bypass.
+        tui_preset_agent = None
+        tui_on_agent_named = run_bridge
+
+        print("  OpenClaw enabled")
+        print("  Agent name: set in the TUI (prompt after your display name)")
         print(f"  Gateway: {gateway_url}  Model: {args.model}")
+        if respond_to_all:
+            print("  Agent replies to: every message (--openclaw-respond-all)")
+        else:
+            print(
+                "  Agent replies when: message contains @YOUR_AGENT_NAME "
+                "(exact substring; name is chosen in the TUI)",
+            )
         print(f"  Dispatcher: port {disp_port} (auto)")
         print()
 
@@ -286,6 +354,9 @@ def main() -> None:
         port=args.port,
         dispatcher_url=dispatcher_url,
         dispatcher_queue=dispatcher_queue,
+        openclaw_mode=bool(args.openclaw),
+        preset_agent_name=tui_preset_agent if args.openclaw else None,
+        on_agent_named=tui_on_agent_named if args.openclaw else None,
     ).run()
 
 

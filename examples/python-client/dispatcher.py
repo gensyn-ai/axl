@@ -83,6 +83,22 @@ class Dispatcher:
 class DispatcherHandler(BaseHTTPRequestHandler):
     dispatcher: Dispatcher
 
+    def do_POST(self) -> None:
+        path = self.path.rstrip("/")
+        if path == "/broadcast":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length) if length else b""
+            try:
+                msg = json.loads(body)
+            except (json.JSONDecodeError, ValueError):
+                self._respond(400, {"error": "invalid JSON"})
+                return
+            self.dispatcher.broadcast(msg)
+            self.send_response(200)
+            self.end_headers()
+        else:
+            self._respond(404, {"error": "not found"})
+
     def do_GET(self) -> None:
         path = self.path.rstrip("/")
 

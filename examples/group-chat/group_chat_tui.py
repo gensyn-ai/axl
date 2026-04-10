@@ -22,6 +22,7 @@ import json
 import random
 import sys
 import time
+from collections.abc import Callable
 from datetime import datetime
 
 import requests
@@ -107,6 +108,54 @@ class WelcomeScreen(ModalScreen[str]):
         self.dismiss(event.value.strip() or _random_name())
 
 
+class AgentNameScreen(ModalScreen[str]):
+    """Modal for naming the OpenClaw agent when the launcher runs with --openclaw."""
+
+    DEFAULT_CSS = """
+    AgentNameScreen {
+        align: center middle;
+    }
+
+    #agent-name-box {
+        width: 60;
+        height: auto;
+        padding: 2 4;
+        background: $boost;
+        border: thick $primary;
+    }
+
+    #agent-name-title {
+        text-align: center;
+        margin-bottom: 1;
+    }
+
+    #agent-name-hint {
+        color: $text-muted;
+        text-align: center;
+        margin-bottom: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="agent-name-box"):
+            yield Static(
+                "[bold white] Name your OpenClaw agent [/bold white]",
+                id="agent-name-title",
+            )
+            yield Static(
+                "[dim]This name appears in chat. Others summon your agent by typing @\n"
+                "followed by this exact name (case-sensitive). Leave blank for a random name.[/dim]",
+                id="agent-name-hint",
+            )
+            yield Input(placeholder="Agent display name…", id="agent-name-input")
+
+    def on_mount(self) -> None:
+        self.query_one("#agent-name-input", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value.strip() or _random_name())
+
+
 class HeaderPanel(Static):
     """Pinned group-info banner."""
 
@@ -123,27 +172,45 @@ class HeaderPanel(Static):
     def __init__(
         self, our_key: str, our_name: str, group_id: str,
         member_count: int, port: int,
+        openclaw_agent: str | None = None,
     ) -> None:
         self._our_key = our_key
         self._group_id = group_id
         self._member_count = member_count
         self._port = port
-        super().__init__(self._build_content(our_name))
+        self._openclaw_agent = openclaw_agent
+        self._human_name = our_name
+        super().__init__(self._build_content())
 
-    def _build_content(self, name: str) -> str:
+    def _build_content(self) -> str:
         mc = self._member_count
-        return (
-            f"[bold white] AXL Group Chat [/bold white]\n\n"
-            f"  [cyan]⬡[/cyan]  [bold]{escape(name)}[/bold]   "
-            f"[dim]{self._our_key[:12]}…[/dim]  [dim]port {self._port}[/dim]\n"
+        name = self._human_name
+        lines = [
+            f"[bold white] AXL Group Chat [/bold white]\n",
+            f"\n  [cyan]⬡[/cyan]  [bold]{escape(name)}[/bold]   "
+            f"[dim]{self._our_key[:12]}…[/dim]  [dim]port {self._port}[/dim]\n",
             f"  [green]⬢[/green]  [bold]{escape(self._group_id)}[/bold]  "
-            f"[dim]{mc} member{'s' if mc != 1 else ''}[/dim]\n\n"
-            f"  [dim italic]Encrypted via Yggdrasil  ·  "
-            f"scroll ↑↓  ·  ctrl+q to quit[/dim italic]"
+            f"[dim]{mc} member{'s' if mc != 1 else ''}[/dim]",
+        ]
+        if self._openclaw_agent:
+            ea = escape(self._openclaw_agent)
+            lines.append(
+                f"\n  [magenta]🤖[/magenta]  Agent [bold]{ea}[/bold]  "
+                f"[dim]— summon with @{ea} (exact)[/dim]"
+            )
+        lines.append(
+            "\n\n  [dim italic]Encrypted via Yggdrasil  ·  "
+            "scroll ↑↓  ·  ctrl+q to quit[/dim italic]"
         )
+        return "".join(lines)
 
     def set_name(self, name: str) -> None:
-        self.update(self._build_content(name))
+        self._human_name = name
+        self.update(self._build_content())
+
+    def set_openclaw_agent(self, agent_name: str | None) -> None:
+        self._openclaw_agent = agent_name
+        self.update(self._build_content())
 
 
 class ChatLog(VerticalScroll):
@@ -231,6 +298,9 @@ class GroupChatApp(App):
         port: int,
         dispatcher_url: str | None = None,
         dispatcher_queue: str = "chat",
+        openclaw_mode: bool = False,
+        preset_agent_name: str | None = None,
+        on_agent_named: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__()
         self.base_url = base_url
@@ -241,6 +311,9 @@ class GroupChatApp(App):
         self.port = port
         self.dispatcher_url = dispatcher_url
         self.dispatcher_queue = dispatcher_queue
+        self.openclaw_mode = openclaw_mode
+        self.preset_agent_name = preset_agent_name
+        self.on_agent_named = on_agent_named
         self._polling = True
         self._chat_ready = False
         self._sender_colors: dict[str, str] = {}
@@ -257,20 +330,39 @@ class GroupChatApp(App):
     def compose(self) -> ComposeResult:
         total = len(self.members) + 1
         placeholder = self.our_name or "…"
-        yield HeaderPanel(self.our_key, placeholder, self.group_id, total, self.port)
+        header_agent = self.preset_agent_name if self.openclaw_mode else None
+        yield HeaderPanel(
+            self.our_key, placeholder, self.group_id, total, self.port,
+            openclaw_agent=header_agent,
+        )
         yield ChatLog()
         yield Input(placeholder="Type a message…", id="chat-input", disabled=True)
         yield Footer()
 
     def on_mount(self) -> None:
         if self.our_name:
-            self._activate_chat()
+            self._after_display_name_flow()
         else:
-            self.push_screen(WelcomeScreen(), callback=self._on_name_chosen)
+            self.push_screen(WelcomeScreen(), callback=self._on_display_name_chosen)
 
-    def _on_name_chosen(self, name: str) -> None:
-        self.our_name = name
-        self.query_one(HeaderPanel).set_name(name)
+    def _on_display_name_chosen(self, name: str) -> None:
+        self.our_name = name.strip() or _random_name()
+        self.query_one(HeaderPanel).set_name(self.our_name)
+        self._after_display_name_flow()
+
+    def _after_display_name_flow(self) -> None:
+        if self.openclaw_mode and self.preset_agent_name is None:
+            self.push_screen(AgentNameScreen(), callback=self._on_agent_name_chosen)
+        else:
+            if self.openclaw_mode and self.preset_agent_name:
+                self.query_one(HeaderPanel).set_openclaw_agent(self.preset_agent_name)
+            self._activate_chat()
+
+    def _on_agent_name_chosen(self, name: str) -> None:
+        agent = name.strip() or _random_name()
+        self.query_one(HeaderPanel).set_openclaw_agent(agent)
+        if self.on_agent_named:
+            self.on_agent_named(agent)
         self._activate_chat()
 
     def _activate_chat(self) -> None:
