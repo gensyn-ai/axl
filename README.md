@@ -15,10 +15,10 @@ This project builds upon the Yggdrasil network stack with gvisor/tcp to provide 
 
 ## Quick Start
 ### Requirements
-- go1.25.7 or earlier
+- Go 1.25.5+ installed (the build system pins `GOTOOLCHAIN=go1.25.5` automatically)
 
 ```bash
-go build -o node ./cmd/node/
+make build
 openssl genpkey -algorithm ed25519 -out private.pem # or provide your own key
 ./node -config node-config.json
 ```
