@@ -21,11 +21,14 @@ from uuid import uuid4
 
 import httpx
 
-from a2a.client import A2ACardResolver, A2AClient
+from a2a.client import ClientConfig, create_client
 from a2a.types import (
-    MessageSendParams,
+    Message,
+    Part,
+    Role,
     SendMessageRequest,
 )
+from google.protobuf.json_format import MessageToDict
 
 
 logging.basicConfig(level=logging.INFO)
@@ -50,38 +53,24 @@ async def run_local(base_url: str, service: str, method: str):
 
     async with httpx.AsyncClient() as httpx_client:
         logger.info(f"Fetching agent card from {base_url}")
-        resolver = A2ACardResolver(
-            httpx_client=httpx_client,
-            base_url=base_url,
+        client = await create_client(
+            base_url,
+            client_config=ClientConfig(httpx_client=httpx_client),
         )
-
-        agent_card = await resolver.get_agent_card()
-        logger.info(f"Agent: {agent_card.name}")
-        logger.info(f"Skills: {[s.id for s in agent_card.skills]}")
-
-        client = A2AClient(httpx_client=httpx_client, agent_card=agent_card)
 
         mcp_request = build_mcp_request(service, method)
 
-        message_payload = {
-            "message": {
-                "role": "user",
-                "parts": [
-                    {"kind": "text", "text": json.dumps(mcp_request)}
-                ],
-                "messageId": uuid4().hex,
-            },
-        }
-
         request = SendMessageRequest(
-            id=str(uuid4()),
-            params=MessageSendParams(**message_payload),
+            message=Message(
+                role=Role.ROLE_USER,
+                parts=[Part(text=json.dumps(mcp_request))],
+                message_id=uuid4().hex,
+            ),
         )
 
         logger.info(f"Sending request to {service} service...")
-        response = await client.send_message(request)
-
-        print(json.dumps(response.model_dump(mode="json", exclude_none=True), indent=2))
+        async for chunk in client.send_message(request):
+            print(json.dumps(MessageToDict(chunk), indent=2))
 
 
 async def run_remote_agent_card(node_url: str, peer_id: str):
@@ -111,16 +100,16 @@ async def run_remote(node_url: str, peer_id: str, service: str, method: str):
     
     mcp_request = build_mcp_request(service, method)
 
-    # Build the A2A JSON-RPC message/send request
+    # Build the A2A JSON-RPC SendMessage request (v1.0)
     a2a_request = {
         "jsonrpc": "2.0",
-        "method": "message/send",
+        "method": "SendMessage",
         "id": str(uuid4()),
         "params": {
             "message": {
-                "role": "user",
+                "role": "ROLE_USER",
                 "parts": [
-                    {"kind": "text", "text": json.dumps(mcp_request)}
+                    {"text": json.dumps(mcp_request)}
                 ],
                 "messageId": uuid4().hex,
             },
