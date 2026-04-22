@@ -133,7 +133,8 @@ class TestExecute:
         # Should have enqueued: working status, failed status
         assert mock_event_queue.enqueue_event.call_count == 2
         last_event = mock_event_queue.enqueue_event.call_args_list[-1][0][0]
-        assert last_event.final is True
+        from a2a.types import TaskState
+        assert last_event.status.state == TaskState.TASK_STATE_FAILED
 
     @pytest.mark.asyncio
     async def test_execute_router_returns_error_field(self):
@@ -226,7 +227,7 @@ class TestExecute:
         self.executor.client = AsyncMock()
         self.executor.client.post = AsyncMock(return_value=mock_response)
 
-        with patch("a2a_serving.a2a_server.new_task") as mock_new_task:
+        with patch("a2a_serving.a2a_server.new_task_from_user_message") as mock_new_task:
             mock_task = MagicMock()
             mock_task.id = "new-task-1"
             mock_task.context_id = "new-ctx-1"
@@ -375,7 +376,8 @@ class TestCreateAgentCard:
         assert card.name == "MCP Router A2A Agent"
         assert len(card.skills) == 1
         assert card.skills[0].id == "weather"
-        assert card.url == "/a2a/peer-abc123"
+        assert card.supported_interfaces[0].url == "/a2a/peer-abc123"
+        assert card.supported_interfaces[0].protocol_binding == "JSONRPC"
         assert card.capabilities.streaming is True
 
     @pytest.mark.asyncio
@@ -402,4 +404,4 @@ class TestCreateAgentCard:
             )
 
         assert card.name == "Custom Agent"
-        assert card.url == "/a2a/peer-abc123"
+        assert card.supported_interfaces[0].url == "/a2a/peer-abc123"
