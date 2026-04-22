@@ -67,3 +67,19 @@ We encourage anyone to run a public node to help bootstrap the network, or just 
 | [Configuration](docs/configuration.md) | Build/run, CLI flags, `node-config.json` |
 | [Integrations](docs/integrations.md) | Python services: MCP router, A2A server, test client |
 | [Examples](docs/examples.md) | Remote MCP server, adding A2A |
+
+## Citation
+
+If you use AXL in your research or project, please cite it as follows:
+
+**BibTeX:**
+
+```bibtex
+@misc{gensyn2026axl,
+  title         = {{AXL}: A P2P Network for Decentralized Agentic and {AI/ML} Applications},
+  author        = {{Gensyn AI}},
+  year          = {2026},
+  howpublished  = {\url{[https://github.com/gensyn-ai/axl](https://github.com/gensyn-ai/axl)}},
+  note          = {Open-source software}
+}
+```
