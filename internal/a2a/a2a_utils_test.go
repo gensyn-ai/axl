@@ -19,6 +19,9 @@ func TestForwardToA2ASuccess(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("expected application/json, got %s", r.Header.Get("Content-Type"))
 		}
+		if r.Header.Get("A2A-Version") != "1.0" {
+			t.Errorf("expected A2A-Version 1.0, got %s", r.Header.Get("A2A-Version"))
+		}
 		if r.Header.Get("X-From-Peer-Id") != "peer-abc123" {
 			t.Errorf("expected X-From-Peer-Id peer-abc123, got %s", r.Header.Get("X-From-Peer-Id"))
 		}
@@ -106,8 +109,8 @@ func TestGetAgentCardSuccess(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
-		if r.URL.Path != "/.well-known/agent.json" {
-			t.Errorf("expected path /.well-known/agent.json, got %s", r.URL.Path)
+		if r.URL.Path != "/.well-known/agent-card.json" {
+			t.Errorf("expected path /.well-known/agent-card.json, got %s", r.URL.Path)
 		}
 		if r.Header.Get("X-From-Peer-Id") != "peer-xyz" {
 			t.Errorf("expected X-From-Peer-Id peer-xyz, got %s", r.Header.Get("X-From-Peer-Id"))

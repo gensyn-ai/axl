@@ -10,7 +10,7 @@ import (
 
 // GetAgentCard fetches the agent card from the A2A server's well-known endpoint.
 func GetAgentCard(fromPeerId string, client *http.Client, a2aURL string) (json.RawMessage, error) {
-	req, err := http.NewRequest("GET", a2aURL+"/.well-known/agent.json", nil)
+	req, err := http.NewRequest("GET", a2aURL+"/.well-known/agent-card.json", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -45,6 +45,9 @@ func ForwardToA2A(
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// v1.0 servers default to 0.3 compatibility when this header is absent,
+	// which causes the handler to reject requests as version-mismatched.
+	req.Header.Set("A2A-Version", "1.0")
 	if fromPeerId != "" {
 		req.Header.Set("X-From-Peer-Id", fromPeerId)
 	}

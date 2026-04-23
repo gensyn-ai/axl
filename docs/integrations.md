@@ -95,7 +95,7 @@ async def deregister():
 
 ## A2A Server
 
-Exposes registered MCP services as [A2A](https://github.com/google/A2A) skills. Auto-discovers services from the router and advertises them at `/.well-known/agent.json`.
+Exposes registered MCP services as [A2A](https://github.com/google/A2A) skills. Auto-discovers services from the router and advertises them at `/.well-known/agent-card.json`.
 
 ```bash
 python -m a2a_serving.a2a_server --port 9004 --router http://127.0.0.1:9003
@@ -112,17 +112,11 @@ POST /a2a/<peerId>
 
 ## A2A Test Client
 
-Located at `examples/python-client/a2a_client.py`. Supports two modes:
+Located at `examples/python-client/a2a_client.py`. Routes requests through the local Gensyn node to a remote peer's A2A server:
 
-**Local** — talk directly to a local A2A server:
-```bash
-python examples/python-client/a2a_client.py --service weather --method tools/list
-```
-
-**Remote** — route through the Yggdrasil network to a remote peer:
 ```bash
 python examples/python-client/a2a_client.py \
-  --remote --peer-id <64-char-hex-public-key> \
+  --peer-id <64-char-hex-public-key> \
   --service weather --method tools/list
 ```
 

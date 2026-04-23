@@ -50,7 +50,7 @@ The a2a server will auto discover the mcp server and register the mcp services a
 ```bash
 # Using the test client
 python examples/python-client/a2a_client.py \
-  --remote --peer-id <remote-public-key> \
+  --peer-id <remote-public-key> \
   --service weather --method tools/list
 
 # Or via curl
@@ -58,12 +58,12 @@ curl -X POST http://127.0.0.1:9002/a2a/<remote-public-key> \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "message/send",
+    "method": "SendMessage",
     "id": 1,
     "params": {
       "message": {
-        "role": "user",
-        "parts": [{"kind": "text", "text": "{\"service\":\"weather\",\"request\":{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1,\"params\":{}}}"}],
+        "role": "ROLE_USER",
+        "parts": [{"text": "{\"service\":\"weather\",\"request\":{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1,\"params\":{}}}"}],
         "messageId": "test123"
       }
     }

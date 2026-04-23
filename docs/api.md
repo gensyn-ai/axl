@@ -67,12 +67,12 @@ curl -X POST http://127.0.0.1:9002/a2a/{peer_id} \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "message/send",
+    "method": "SendMessage",
     "id": 1,
     "params": {
       "message": {
-        "role": "user",
-        "parts": [{"kind": "text", "text": "{\"service\":\"weather\",\"request\":{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1,\"params\":{}}}"}],
+        "role": "ROLE_USER",
+        "parts": [{"text": "{\"service\":\"weather\",\"request\":{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1,\"params\":{}}}"}],
         "messageId": "test123"
       }
     }
@@ -85,12 +85,12 @@ curl -X POST http://127.0.0.1:9002/a2a/{peer_id} \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "message/send",
+    "method": "SendMessage",
     "id": 1,
     "params": {
       "message": {
-        "role": "user",
-        "parts": [{"kind": "text", "text": "{\"service\":\"weather\",\"request\":{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"id\":1,\"params\":{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Dublin\"}}}}"}],
+        "role": "ROLE_USER",
+        "parts": [{"text": "{\"service\":\"weather\",\"request\":{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"id\":1,\"params\":{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Dublin\"}}}}"}],
         "messageId": "test123"
       }
     }

@@ -1,5 +1,5 @@
 msgpack
 requests
 torch
-a2a-sdk>=0.3.0
+a2a-sdk>=1.0.0
 httpx>=0.28.1

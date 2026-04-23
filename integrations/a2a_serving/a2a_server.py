@@ -17,21 +17,27 @@ from typing import Any
 import httpx
 import uvicorn
 
+from a2a.helpers import (
+    new_task_from_user_message,
+    new_text_artifact,
+    new_text_message,
+)
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
+    AgentInterface,
     AgentSkill,
     TaskArtifactUpdateEvent,
     TaskState,
     TaskStatus,
     TaskStatusUpdateEvent,
 )
-from a2a.utils import new_agent_text_message, new_task, new_text_artifact
+from starlette.applications import Starlette
 
 
 logging.basicConfig(level=logging.INFO)
@@ -69,21 +75,20 @@ class MCPRouterAgentExecutor(AgentExecutor):
         if not task:
             if not context.message:
                 raise Exception("No message provided")
-            task = new_task(context.message)
+            task = new_task_from_user_message(context.message)
             await event_queue.enqueue_event(task)
 
         # Update status to working
         await event_queue.enqueue_event(
             TaskStatusUpdateEvent(
                 status=TaskStatus(
-                    state=TaskState.working,
-                    message=new_agent_text_message(
+                    state=TaskState.TASK_STATE_WORKING,
+                    message=new_text_message(
                         "Processing MCP request...",
-                        task.context_id,
-                        task.id,
+                        context_id=task.context_id,
+                        task_id=task.id,
                     ),
                 ),
-                final=False,
                 context_id=task.context_id,
                 task_id=task.id,
             )
@@ -137,16 +142,15 @@ class MCPRouterAgentExecutor(AgentExecutor):
                     last_chunk=True,
                     artifact=new_text_artifact(
                         name="mcp_response",
-                        description=f"Response from {service_name} MCP service",
                         text=response_text,
+                        description=f"Response from {service_name} MCP service",
                     ),
                 )
             )
 
             await event_queue.enqueue_event(
                 TaskStatusUpdateEvent(
-                    status=TaskStatus(state=TaskState.completed),
-                    final=True,
+                    status=TaskStatus(state=TaskState.TASK_STATE_COMPLETED),
                     context_id=task.context_id,
                     task_id=task.id,
                 )
@@ -161,14 +165,13 @@ class MCPRouterAgentExecutor(AgentExecutor):
             await event_queue.enqueue_event(
                 TaskStatusUpdateEvent(
                     status=TaskStatus(
-                        state=TaskState.failed,
-                        message=new_agent_text_message(
+                        state=TaskState.TASK_STATE_FAILED,
+                        message=new_text_message(
                             f"Error: {str(e)}",
-                            task.context_id,
-                            task.id,
+                            context_id=task.context_id,
+                            task_id=task.id,
                         ),
                     ),
-                    final=True,
                     context_id=task.context_id,
                     task_id=task.id,
                 )
@@ -275,11 +278,16 @@ async def create_agent_card(
         ]
 
     peer_id = await get_peer_id()
-    
+
     return AgentCard(
         name=name,
         description="A2A agent that proxies requests to MCP services via the Gensyn node router",
-        url=f"/a2a/{peer_id}",
+        supported_interfaces=[
+            AgentInterface(
+                protocol_binding="JSONRPC",
+                url=f"/a2a/{peer_id}",
+            ),
+        ],
         version="1.0.0",
         default_input_modes=["text", "application/json"],
         default_output_modes=["text", "application/json"],
@@ -304,13 +312,14 @@ async def run_server(host: str, port: int, router_url: str):
     request_handler = DefaultRequestHandler(
         agent_executor=MCPRouterAgentExecutor(router_url),
         task_store=InMemoryTaskStore(),
+        agent_card=agent_card,
     )
 
-    # Create A2A application
-    server = A2AStarletteApplication(
-        agent_card=agent_card,
-        http_handler=request_handler,
-    )
+    # Build routes for agent card + JSON-RPC and assemble the Starlette app
+    routes = []
+    routes.extend(create_agent_card_routes(agent_card))
+    routes.extend(create_jsonrpc_routes(request_handler, rpc_url="/"))
+    app = Starlette(routes=routes)
 
     logger.info(f"Starting A2A server on http://{host}:{port}")
     logger.info(f"Agent card available at http://{host}:{port}/.well-known/agent-card.json")
@@ -318,7 +327,7 @@ async def run_server(host: str, port: int, router_url: str):
 
     # Run with uvicorn
     config = uvicorn.Config(
-        server.build(),
+        app,
         host=host,
         port=port,
         log_level="info",
