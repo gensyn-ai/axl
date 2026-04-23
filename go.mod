@@ -2,6 +2,8 @@ module github.com/gensyn-ai/axl
 
 go 1.25.5
 
+replace gvisor.dev/gvisor => ./third_party/gvisor
+
 require (
 	github.com/gologme/log v1.3.0
 	github.com/yggdrasil-network/yggdrasil-go v0.5.12

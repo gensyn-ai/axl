@@ -198,8 +198,8 @@ func TestA2AStreamForwardAgentCard(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
-		if r.URL.Path != "/.well-known/agent.json" {
-			t.Errorf("expected path /.well-known/agent.json, got %s", r.URL.Path)
+		if r.URL.Path != "/.well-known/agent-card.json" {
+			t.Errorf("expected path /.well-known/agent-card.json, got %s", r.URL.Path)
 		}
 		if r.Header.Get("X-From-Peer-Id") != "frompeerid123" {
 			t.Errorf("expected X-From-Peer-Id frompeerid123, got %s", r.Header.Get("X-From-Peer-Id"))
