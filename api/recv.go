@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 	"sync"
+
+	"github.com/gensyn-ai/axl/internal/metrics"
 )
 
 // ReceivedMessage holds incoming data with sender info
@@ -23,11 +25,19 @@ func newReceivedQueue(capacity int) *receivedQueue {
 
 func (q *receivedQueue) Push(msg ReceivedMessage) {
 	q.mu.Lock()
-	defer q.mu.Unlock()
+	dropped := false
 	if len(q.items) >= q.capacity {
 		q.items = q.items[1:]
+		dropped = true
 	}
 	q.items = append(q.items, msg)
+	q.mu.Unlock()
+	if m := metrics.Default; m != nil {
+		m.Counter("recv_queue_pushes_total").Inc()
+		if dropped {
+			m.Counter("recv_queue_drops_total").Inc()
+		}
+	}
 }
 
 func (q *receivedQueue) Pop() (ReceivedMessage, bool) {
@@ -70,7 +80,9 @@ func HandleRecv(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-
+	if m := metrics.Default; m != nil {
+		m.Counter("recv_queue_pops_total").Inc()
+	}
 	// Return raw binary with sender peer ID in header (no JSON/base64)
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("X-From-Peer-Id", msg.FromPeerId)

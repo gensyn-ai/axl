@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AXL — node monitor</title>
+<link rel="stylesheet" href="/dashboard/static/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">AXL</span>
+    <span class="brand-tag">node monitor</span>
+  </div>
+  <div class="identity" id="identity">
+    <span class="ident-row" id="ident-ipv6"><span class="ident-label">ipv6</span><span class="ident-val">—</span></span>
+    <span class="ident-row" id="ident-key"><span class="ident-label">key</span><span class="ident-val">—</span></span>
+    <span class="ident-row" id="ident-host"><span class="ident-label">host</span><span class="ident-val">—</span></span>
+  </div>
+  <div class="status">
+    <span class="status-dot" id="status-dot" data-state="connecting"></span>
+    <span class="status-label" id="status-label">connecting</span>
+    <span class="uptime" id="uptime">0s</span>
+  </div>
+</header>
+
+<main class="grid">
+  <section class="panel panel-topo">
+    <header class="panel-head">
+      <h2>topology</h2>
+      <div class="controls">
+        <button class="btn" id="topo-mode-tree" data-active="true">tree</button>
+        <button class="btn" id="topo-mode-force">force</button>
+        <button class="btn" id="topo-freeze">freeze</button>
+        <input class="search" id="topo-search" placeholder="filter by key prefix…" />
+      </div>
+    </header>
+    <div class="panel-body topo-body">
+      <svg id="topo-svg" class="topo-svg"></svg>
+      <div class="topo-legend">
+        <span><span class="dot self"></span>self</span>
+        <span><span class="dot peer"></span>direct peer</span>
+        <span><span class="dot tree"></span>routed node</span>
+        <span><span class="line solid"></span>direct link</span>
+        <span><span class="line dashed"></span>tree edge</span>
+      </div>
+      <div class="topo-stats" id="topo-stats">—</div>
+    </div>
+  </section>
+
+  <section class="panel panel-peers">
+    <header class="panel-head">
+      <h2>peers</h2>
+      <span class="muted" id="peer-count">0</span>
+    </header>
+    <div class="panel-body">
+      <table class="peer-table" id="peer-table">
+        <thead>
+          <tr>
+            <th>peer</th>
+            <th>dir</th>
+            <th>up</th>
+            <th class="num">in</th>
+            <th class="num">out</th>
+            <th class="num">msg in</th>
+            <th class="num">msg out</th>
+            <th class="num">conns</th>
+            <th class="num">last seen</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel panel-charts">
+    <header class="panel-head"><h2>traffic</h2><span class="muted">last 5 min · 1s</span></header>
+    <div class="panel-body charts-grid">
+      <div class="chart-cell">
+        <div class="chart-label">messages/sec <span class="chart-val" data-stat="msg_rate">—</span></div>
+        <canvas class="chart" id="chart-msgs"></canvas>
+      </div>
+      <div class="chart-cell">
+        <div class="chart-label">bytes/sec <span class="chart-val" data-stat="byte_rate">—</span></div>
+        <canvas class="chart" id="chart-bytes"></canvas>
+      </div>
+      <div class="chart-cell">
+        <div class="chart-label">active conns <span class="chart-val" data-stat="active_conns">—</span></div>
+        <canvas class="chart" id="chart-conns"></canvas>
+      </div>
+      <div class="chart-cell">
+        <div class="chart-label">recv queue depth <span class="chart-val" data-stat="recv_depth">—</span></div>
+        <canvas class="chart" id="chart-queue"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel panel-side">
+    <header class="panel-head"><h2>runtime</h2></header>
+    <div class="panel-body kv-grid" id="runtime-kv"></div>
+  </section>
+
+  <section class="panel panel-side">
+    <header class="panel-head"><h2>forwarders</h2></header>
+    <div class="panel-body kv-grid" id="forwarders-kv"></div>
+  </section>
+
+  <section class="panel panel-side">
+    <header class="panel-head"><h2>tcp listener</h2></header>
+    <div class="panel-body kv-grid" id="tcp-kv"></div>
+  </section>
+
+  <section class="panel panel-logs">
+    <header class="panel-head">
+      <h2>logs</h2>
+      <div class="controls">
+        <input class="search" id="log-filter" placeholder="filter…" />
+        <button class="btn" id="log-pause">pause</button>
+        <button class="btn" id="log-clear">clear</button>
+      </div>
+    </header>
+    <div class="panel-body log-body" id="log-body"></div>
+  </section>
+</main>
+
+<script src="/dashboard/static/format.js"></script>
+<script src="/dashboard/static/charts.js"></script>
+<script src="/dashboard/static/topology.js"></script>
+<script src="/dashboard/static/app.js"></script>
+</body>
+</html>

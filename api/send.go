@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gensyn-ai/axl/internal/metrics"
 	"github.com/gensyn-ai/axl/internal/tcp/dial"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
@@ -50,6 +51,10 @@ func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 
 		conn, err := dialPeerConnection(netStack, TCPPort, destPeerId)
 		if err != nil {
+			if m := metrics.Default; m != nil {
+				m.Counter("send_errors_total").Inc()
+				m.Peers().RecordError(destPeerId, err.Error())
+			}
 			switch {
 			case errors.Is(err, dial.ErrInvalidPeerId):
 				http.Error(w, "Invalid destination peer ID", http.StatusBadRequest)
@@ -67,14 +72,27 @@ func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 
 		if _, err := conn.Write(lenBuf); err != nil {
+			if m := metrics.Default; m != nil {
+				m.Counter("send_errors_total").Inc()
+			}
 			http.Error(w, fmt.Sprintf("Write length failed: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		// Write Data
 		if _, err := conn.Write(data); err != nil {
+			if m := metrics.Default; m != nil {
+				m.Counter("send_errors_total").Inc()
+			}
 			http.Error(w, fmt.Sprintf("Write data failed: %v", err), http.StatusInternalServerError)
 			return
+		}
+
+		if m := metrics.Default; m != nil {
+			m.Counter("send_requests_total").Inc()
+			m.Counter("messages_out_total").Inc()
+			m.Counter("message_bytes_out_total").Add(uint64(len(data)))
+			m.Peers().RecordOut(destPeerId, len(data))
 		}
 
 		// Return minimal response immediately; MCP traffic uses a separate endpoint.

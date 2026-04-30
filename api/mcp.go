@@ -12,6 +12,7 @@ import (
 
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 
+	"github.com/gensyn-ai/axl/internal/metrics"
 	"github.com/gensyn-ai/axl/internal/tcp/dial"
 )
 
@@ -79,6 +80,13 @@ func handleMCPPost(
 	TCPPort int,
 	netStack *stack.Stack,
 ) {
+	start := time.Now()
+	defer func() {
+		if m := metrics.Default; m != nil {
+			m.Histogram("mcp_forward_latency").Observe(time.Since(start))
+			m.Counter("mcp_forward_requests_total").Inc()
+		}
+	}()
 	// Read the JSON-RPC request body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -133,6 +141,9 @@ func handleMCPPost(
 	}
 	conn, err := mcpDial(netStack, TCPPort, peerId)
 	if err != nil {
+		if m := metrics.Default; m != nil {
+			m.Counter("mcp_forward_errors_total").Inc()
+		}
 		http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 		return
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/gensyn-ai/axl/api"
 	"github.com/gensyn-ai/axl/internal/a2a"
 	"github.com/gensyn-ai/axl/internal/mcp"
+	"github.com/gensyn-ai/axl/internal/metrics"
 
 	"github.com/gologme/log"
 	"github.com/yggdrasil-network/yggdrasil-go/src/address"
@@ -180,7 +181,13 @@ func startTCPListener(tcpPort int, mcpRouterUrl string, a2aURL string) {
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Printf("Accept error: %v", err)
+			if m := metrics.Default; m != nil {
+				m.Counter("tcp_accept_errors_total").Inc()
+			}
 			continue
+		}
+		if m := metrics.Default; m != nil {
+			m.Counter("tcp_accepts_total").Inc()
 		}
 		select {
 		case connSem <- struct{}{}:
@@ -191,6 +198,9 @@ func startTCPListener(tcpPort int, mcpRouterUrl string, a2aURL string) {
 		default:
 			log.Printf("Connection limit reached (%d), rejecting connection from %s",
 				MaxConcurrentConns, conn.RemoteAddr())
+			if m := metrics.Default; m != nil {
+				m.Counter("tcp_rejects_total").Inc()
+			}
 			conn.Close()
 		}
 	}
@@ -216,6 +226,15 @@ func handleTCPConn(conn net.Conn, mux *Multiplexer) {
 	fromPeerId := peerIDFromAddr(conn.RemoteAddr())
 	log.Printf("Connection from peer %s...", fromPeerId[:16])
 
+	if m := metrics.Default; m != nil {
+		m.Gauge("tcp_active_conns").Inc()
+		m.Peers().ConnOpened(fromPeerId)
+		defer func() {
+			m.Gauge("tcp_active_conns").Dec()
+			m.Peers().ConnClosed(fromPeerId)
+		}()
+	}
+
 	// Protocol: Length(4 bytes) + Data
 	for {
 		// Idle timeout: close if no new message arrives within the window
@@ -226,6 +245,10 @@ func handleTCPConn(conn net.Conn, mux *Multiplexer) {
 		if _, err := io.ReadFull(conn, lenBuf); err != nil {
 			if err != io.EOF {
 				log.Printf("Read length error: %v", err)
+				if m := metrics.Default; m != nil {
+					m.Counter("tcp_read_errors_total").Inc()
+					m.Peers().RecordError(fromPeerId, err.Error())
+				}
 			}
 			return
 		}
@@ -233,6 +256,10 @@ func handleTCPConn(conn net.Conn, mux *Multiplexer) {
 		if length > api.MaxMessageSize {
 			log.Printf("Message size %d from peer %s exceeds maximum %d, closing connection",
 				length, fromPeerId[:16], api.MaxMessageSize)
+			if m := metrics.Default; m != nil {
+				m.Counter("tcp_oversize_drops_total").Inc()
+				m.Peers().RecordError(fromPeerId, "oversize message")
+			}
 			return
 		}
 
@@ -243,20 +270,33 @@ func handleTCPConn(conn net.Conn, mux *Multiplexer) {
 		dataBuf := make([]byte, length)
 		if _, err := io.ReadFull(conn, dataBuf); err != nil {
 			log.Printf("Read data error: %v", err)
+			if m := metrics.Default; m != nil {
+				m.Counter("tcp_read_errors_total").Inc()
+				m.Peers().RecordError(fromPeerId, err.Error())
+			}
 			return
 		}
 
 		// Use stream multiplexing for server applications (MCP), like HTTP/2
 		handled := false
-		for _, stream := range mux.sources {
-			msgPtr := mux.requestTypes[stream.GetID()]()
-			if stream.IsAllowed(dataBuf, msgPtr) {
-				respBytes, err := stream.Forward(msgPtr, fromPeerId)
+		stream := ""
+		for _, src := range mux.sources {
+			msgPtr := mux.requestTypes[src.GetID()]()
+			if src.IsAllowed(dataBuf, msgPtr) {
+				stream = src.GetID()
+				respBytes, err := src.Forward(msgPtr, fromPeerId)
 				if err != nil {
-					log.Printf("Stream %s forward error: %v", stream.GetID(), err)
+					log.Printf("Stream %s forward error: %v", src.GetID(), err)
+					if m := metrics.Default; m != nil {
+						m.Counter("stream_" + stream + "_errors_total").Inc()
+					}
 				} else if respBytes != nil {
 					if err := sendResponse(conn, respBytes); err != nil {
-						log.Printf("Stream %s failed to send response: %v", stream.GetID(), err)
+						log.Printf("Stream %s failed to send response: %v", src.GetID(), err)
+					} else if m := metrics.Default; m != nil {
+						m.Counter("stream_" + stream + "_responses_total").Inc()
+						m.Counter("stream_" + stream + "_response_bytes_total").Add(uint64(len(respBytes)))
+						m.Peers().RecordOut(fromPeerId, len(respBytes))
 					}
 				}
 				handled = true
@@ -266,10 +306,19 @@ func handleTCPConn(conn net.Conn, mux *Multiplexer) {
 
 		// Only queue for /recv if no stream handled the message
 		if !handled {
+			stream = "raw"
 			api.DefaultRecvQueue.Push(api.ReceivedMessage{
 				FromPeerId: fromPeerId,
 				Data:       dataBuf,
 			})
+		}
+
+		if m := metrics.Default; m != nil {
+			m.Counter("messages_in_total").Inc()
+			m.Counter("message_bytes_in_total").Add(uint64(len(dataBuf)))
+			m.Counter("stream_" + stream + "_messages_total").Inc()
+			m.Counter("stream_" + stream + "_bytes_total").Add(uint64(len(dataBuf)))
+			m.Peers().RecordIn(fromPeerId, len(dataBuf))
 		}
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 
+	"github.com/gensyn-ai/axl/internal/metrics"
 	"github.com/gensyn-ai/axl/internal/tcp/dial"
 )
 
@@ -38,6 +39,13 @@ type A2AResponse struct {
 // GET:  fetches the remote peer's agent card (/.well-known/agent-card.json) for discovery.
 func HandleA2A(tcpPort int, netStack *stack.Stack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		defer func() {
+			if m := metrics.Default; m != nil {
+				m.Histogram("a2a_forward_latency").Observe(time.Since(start))
+				m.Counter("a2a_forward_requests_total").Inc()
+			}
+		}()
 		// Parse path: /a2a/{peer_id}
 		peerId := strings.TrimPrefix(r.URL.Path, "/a2a/")
 		if peerId == "" {
@@ -71,6 +79,9 @@ func HandleA2A(tcpPort int, netStack *stack.Stack) http.HandlerFunc {
 		// Dial the remote peer
 		conn, err := a2aDial(netStack, tcpPort, peerId)
 		if err != nil {
+			if m := metrics.Default; m != nil {
+				m.Counter("a2a_forward_errors_total").Inc()
+			}
 			http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 			return
 		}

@@ -4,16 +4,28 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/gensyn-ai/axl/api"
+	"github.com/gensyn-ai/axl/dashboard"
+	"github.com/gensyn-ai/axl/internal/metrics"
 	"github.com/gensyn-ai/axl/internal/tcp/listen"
 
 	"github.com/gologme/log"
 	"github.com/yggdrasil-network/yggdrasil-go/src/config"
 	"github.com/yggdrasil-network/yggdrasil-go/src/core"
+)
+
+// Build info, settable via -ldflags "-X main.buildVersion=... -X main.buildCommit=... -X main.buildTime=...".
+var (
+	buildVersion = "dev"
+	buildCommit  = "unknown"
+	buildTime    = "unknown"
 )
 
 var (
@@ -29,6 +41,7 @@ func main() {
 func run() error {
 	listenAddr := flag.String("listen", "", "Listen address override (optional)")
 	configPath := flag.String("config", defaultConfigPath, "Path to configuration file")
+	dashboardEnabled := flag.Bool("dashboard", true, "Enable the in-process dashboard at /dashboard/")
 	flag.Parse()
 
 	// Load API configuration
@@ -37,8 +50,20 @@ func run() error {
 		return err
 	}
 
-	// Create logger
-	logger := log.New(os.Stdout, "[node] ", 0)
+	// Initialize metrics registry and log ring before the logger so log lines
+	// flow into the dashboard's tail.
+	reg := metrics.NewRegistry()
+	metrics.Default = reg
+	registerSeries(reg)
+	reg.Start()
+	defer reg.Stop()
+
+	// Create logger that writes to both stdout and the dashboard log ring.
+	var logSink io.Writer = os.Stdout
+	if *dashboardEnabled {
+		logSink = io.MultiWriter(os.Stdout, reg.Logs())
+	}
+	logger := log.New(logSink, "[node] ", 0)
 	logger.EnableLevel("info")
 	logger.EnableLevel("warn")
 	logger.EnableLevel("error")
@@ -109,12 +134,84 @@ func run() error {
 	}
 	listen.SetupNetworkStack(yggCore, tcpPort, mcpRouterUrl, a2aUrl)
 
-	// Create HTTP Bridge
-	handler := api.NewHandler(yggCore, tcpPort, listen.NetStack)
+	// Build HTTP mux with API + dashboard routes, wrapped in timing middleware.
+	mux := http.NewServeMux()
+	apiHandler := api.NewHandler(yggCore, tcpPort, listen.NetStack)
+	mux.Handle("/topology", apiHandler)
+	mux.Handle("/send", apiHandler)
+	mux.Handle("/recv", apiHandler)
+	mux.Handle("/mcp/", apiHandler)
+	mux.Handle("/a2a/", apiHandler)
+
+	if *dashboardEnabled {
+		dashboard.Mount(mux, dashboard.Config{
+			Reg:     reg,
+			YggCore: yggCore,
+			BuildInfo: dashboard.BuildInfo{
+				Version:   buildVersion,
+				Commit:    buildCommit,
+				BuildTime: buildTime,
+				GoVersion: runtime.Version(),
+			},
+			NodeConfig: dashboard.NodeConfigView{
+				TCPPort:         apiCfg.TCPPort,
+				APIPort:         apiCfg.ApiPort,
+				BridgeAddr:      apiCfg.BridgeAddr,
+				McpRouterAddr:   apiCfg.McpRouterAddr,
+				A2AAddr:         apiCfg.A2AAddr,
+				MaxMessageSize:  api.MaxMessageSize,
+				MaxConcConns:    listen.MaxConcurrentConns,
+				ConnReadTimeout: listen.ConnReadTimeout.String(),
+				ConnIdleTimeout: listen.ConnIdleTimeout.String(),
+			},
+			StartTime: reg.StartTime(),
+		})
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/" {
+				http.Redirect(w, r, "/dashboard/", http.StatusFound)
+				return
+			}
+			http.NotFound(w, r)
+		})
+		if apiCfg.BridgeAddr != "127.0.0.1" && apiCfg.BridgeAddr != "localhost" {
+			logger.Warnf("Dashboard enabled on non-loopback address %s — exposed without auth", apiCfg.BridgeAddr)
+		}
+	}
+
+	handler := api.TimingMiddleware(mux)
 	listenAddrStr := fmt.Sprintf("%s:%d", apiCfg.BridgeAddr, apiCfg.ApiPort)
 	fmt.Println("Listening on", listenAddrStr)
+	if *dashboardEnabled {
+		fmt.Printf("Dashboard at http://%s/dashboard/\n", listenAddrStr)
+	}
 	if err := http.ListenAndServe(listenAddrStr, handler); err != nil {
 		return fmt.Errorf("HTTP server failed: %w", err)
 	}
 	return nil
+}
+
+// registerSeries wires up which counters/gauges become time-series.
+// Called once at startup before reg.Start().
+func registerSeries(reg *metrics.Registry) {
+	s := reg.Series()
+	// Rates from counters
+	s.TrackRate("messages_in_per_sec", reg.Counter("messages_in_total"))
+	s.TrackRate("messages_out_per_sec", reg.Counter("messages_out_total"))
+	s.TrackRate("message_bytes_in_per_sec", reg.Counter("message_bytes_in_total"))
+	s.TrackRate("message_bytes_out_per_sec", reg.Counter("message_bytes_out_total"))
+	s.TrackRate("tcp_accepts_per_sec", reg.Counter("tcp_accepts_total"))
+	s.TrackRate("http_requests_per_sec", reg.Counter("http_requests_total"))
+	// Gauges sampled directly
+	s.TrackGauge("tcp_active_conns", func() float64 { return float64(reg.Gauge("tcp_active_conns").Value()) })
+	s.TrackGauge("recv_queue_depth", func() float64 { return float64(api.DefaultRecvQueue.Len()) })
+	s.TrackGauge("runtime_goroutines", func() float64 { return float64(reg.Gauge("runtime_goroutines").Value()) })
+	s.TrackGauge("runtime_heap_bytes", func() float64 { return float64(reg.Gauge("runtime_heap_bytes").Value()) })
+	// Keep the gauge in sync with the live queue length (other code only updates on push/pop).
+	go func() {
+		t := time.NewTicker(500 * time.Millisecond)
+		defer t.Stop()
+		for range t.C {
+			reg.Gauge("recv_queue_depth").Set(int64(api.DefaultRecvQueue.Len()))
+		}
+	}()
 }
