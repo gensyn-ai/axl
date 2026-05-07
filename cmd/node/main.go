@@ -32,7 +32,7 @@ func run() error {
 	flag.Parse()
 
 	// Load API configuration
-	apiCfg, err := LoadAPIConfig(*configPath)
+	apiCfg, configWarnings, err := LoadAPIConfig(*configPath)
 	if err != nil {
 		return err
 	}
@@ -42,6 +42,10 @@ func run() error {
 	logger.EnableLevel("info")
 	logger.EnableLevel("warn")
 	logger.EnableLevel("error")
+
+	for _, w := range configWarnings {
+		logger.Warnf("%s", w)
+	}
 
 	// Create Yggdrasil configuration
 	cfg := config.GenerateConfig()

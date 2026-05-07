@@ -52,23 +52,40 @@ func DefaultAPIConfig() ApiConfig {
 }
 
 // LoadAPIConfig loads the API configuration from the specified config file.
-// It starts with defaults and applies overrides from the JSON config.
-func LoadAPIConfig(configPath string) (ApiConfig, error) {
+// It starts with defaults and applies overrides from the JSON config. The
+// returned warnings slice surfaces non-fatal config issues (e.g. deprecated
+// fields) for the caller to log.
+func LoadAPIConfig(configPath string) (ApiConfig, []string, error) {
 	cfg := DefaultAPIConfig()
 
 	configBytes, err := os.ReadFile(configPath)
 	if err != nil {
-		return cfg, fmt.Errorf("read config %s: %w", configPath, err)
+		return cfg, nil, fmt.Errorf("read config %s: %w", configPath, err)
 	}
 
 	var overrides ApiConfig
 	if err := json.Unmarshal(configBytes, &overrides); err != nil {
 		// JSON unmarshal errors are non-fatal - we just use defaults
-		return cfg, nil
+		return cfg, nil, nil
 	}
 
 	applyOverrides(&cfg, overrides)
-	return cfg, nil
+	return cfg, deprecationWarnings(configBytes), nil
+}
+
+// deprecationWarnings reports any deprecated config keys present in the raw
+// JSON. Used to give users a one-line heads-up when they upgrade past a
+// removed setting that would otherwise silently be ignored.
+func deprecationWarnings(configBytes []byte) []string {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(configBytes, &raw); err != nil {
+		return nil
+	}
+	var warnings []string
+	if _, ok := raw["tcp_port"]; ok {
+		warnings = append(warnings, "config field 'tcp_port' is deprecated and ignored; the overlay TCP port is fixed at 7000 network-wide")
+	}
+	return warnings
 }
 
 func applyOverrides(base *ApiConfig, ov ApiConfig) {
