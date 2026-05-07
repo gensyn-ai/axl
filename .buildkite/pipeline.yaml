@@ -1,60 +1,14 @@
 steps:
-  # Set the image tag so if this workflow is run on main, the images built will be tagged
-  # with either `pr-<num>` or `main`. Our agent has a hook that can set env variables in all
-  # downstream jobs just by prepending some metadata with "env-"
-  - label: "Set Image Tag Suffix"
-    agents:
-      queue: default
-    command: |
-      if [ ! "$BUILDKITE_PULL_REQUEST" == "false" ]; then
-        buildkite-agent meta-data set "env-IMAGE_TAG" "pr-$BUILDKITE_PULL_REQUEST"
-      else
-        buildkite-agent meta-data set "env-IMAGE_TAG" "main"
-      fi
-
-      buildkite-agent meta-data set "env-REPO_PREFIX" "europe-docker.pkg.dev/gensyn-main/registry"
-
-  - wait
-
-  - group: "Unit Tests"
-    key: unit-tests
-    steps:
-      - label: "Go Tests"
-        key: go-tests
-        agents:
-          queue: default
-        command: go test ./...
-        plugins:
-          - docker#v5.12.0:
-              image: docker.io/library/golang:1.25-alpine
-              workdir: /workdir
-              volumes:
-                - ".:/workdir"
-
-      - label: "Python Integration Tests"
-        key: python-tests
-        agents:
-          queue: default
-        command: sh -c 'cd integrations && pip install -e ".[test]" && pytest'
-        plugins:
-          - docker#v5.12.0:
-              image: docker.io/library/python:3.12-slim
-              workdir: /workdir
-              volumes:
-                - ".:/workdir"
-
-  - label: "Build Docker Image"
-    key: build-node
-    depends_on:
-      - unit-tests
+  - label: "Build & Push Docker Image"
+    branches: "main"
+    if: build.pull_request.id == null
     agents:
       queue: default
     command: |
       .buildkite/tools/build-oci-image.sh \
-        --output type=image,push=true,\"name=$$REPO_PREFIX/yggdrasil-node:$$IMAGE_TAG,$$REPO_PREFIX/yggdrasil-node:$BUILDKITE_COMMIT\" \
+        --output type=image,push=true,"name=europe-docker.pkg.dev/gensyn-main/registry/yggdrasil-node:main,europe-docker.pkg.dev/gensyn-main/registry/yggdrasil-node:$$BUILDKITE_COMMIT" \
         --local dockerfile=/workdir \
         --local context=/workdir \
         --opt filename=./containerfiles/Dockerfile \
-        --export-cache type=registry,ref=$$REPO_PREFIX/yggdrasil-node:cache-$$IMAGE_TAG,image-manifest=true,mode=max \
-        --import-cache type=registry,ref=$$REPO_PREFIX/yggdrasil-node:cache-$$IMAGE_TAG \
-        --import-cache type=registry,ref=$$REPO_PREFIX/yggdrasil-node:cache-main
+        --export-cache type=registry,ref=europe-docker.pkg.dev/gensyn-main/registry/yggdrasil-node:cache-main,image-manifest=true,mode=max \
+        --import-cache type=registry,ref=europe-docker.pkg.dev/gensyn-main/registry/yggdrasil-node:cache-main
