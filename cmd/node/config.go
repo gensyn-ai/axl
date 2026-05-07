@@ -95,6 +95,9 @@ func applyOverrides(base *ApiConfig, ov ApiConfig) {
 	if ov.McpRouterPort != 0 {
 		base.McpRouterPort = ov.McpRouterPort
 	}
+	if ov.A2APort != 0 {
+		base.A2APort = ov.A2APort
+	}
 	if ov.McpRouterAddr != "" {
 		base.McpRouterAddr = ov.McpRouterAddr
 	}
