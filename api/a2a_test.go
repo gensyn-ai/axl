@@ -22,13 +22,13 @@ func resetA2ADial(t *testing.T) {
 func setA2ADialer(t *testing.T, conn net.Conn, err error) {
 	t.Helper()
 	resetA2ADial(t)
-	a2aDial = func(_ *stack.Stack, _ int, _ string) (net.Conn, error) {
+	a2aDial = func(_ *stack.Stack, _ string) (net.Conn, error) {
 		return conn, err
 	}
 }
 
 func TestHandleA2AEmptyPeerId(t *testing.T) {
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPost, "/a2a/", strings.NewReader("{}"))
 	w := httptest.NewRecorder()
 
@@ -40,7 +40,7 @@ func TestHandleA2AEmptyPeerId(t *testing.T) {
 }
 
 func TestHandleA2AMethodNotAllowed(t *testing.T) {
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPut, "/a2a/"+validPeerId, nil)
 	w := httptest.NewRecorder()
 
@@ -52,7 +52,7 @@ func TestHandleA2AMethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleA2ABodyReadError(t *testing.T) {
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPost, "/a2a/"+validPeerId, failingReader{})
 	w := httptest.NewRecorder()
 
@@ -66,7 +66,7 @@ func TestHandleA2ABodyReadError(t *testing.T) {
 func TestHandleA2ADialFailure(t *testing.T) {
 	setA2ADialer(t, nil, &net.OpError{Op: "dial", Err: net.UnknownNetworkError("unreachable")})
 
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPost, "/a2a/"+validPeerId, strings.NewReader("{}"))
 	w := httptest.NewRecorder()
 
@@ -82,7 +82,7 @@ func TestHandleA2AWriteError(t *testing.T) {
 	peerSide.Close() // handler's write will immediately fail
 	setA2ADialer(t, handlerSide, nil)
 
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPost, "/a2a/"+validPeerId, strings.NewReader("{}"))
 	w := httptest.NewRecorder()
 
@@ -103,7 +103,7 @@ func TestHandleA2AReadError(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPost, "/a2a/"+validPeerId, strings.NewReader("{}"))
 	w := httptest.NewRecorder()
 
@@ -124,7 +124,7 @@ func TestHandleA2AInvalidResponseJSON(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPost, "/a2a/"+validPeerId, strings.NewReader("{}"))
 	w := httptest.NewRecorder()
 
@@ -147,7 +147,7 @@ func TestHandleA2AErrorResponseFromPeer(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPost, "/a2a/"+validPeerId, strings.NewReader("{}"))
 	w := httptest.NewRecorder()
 
@@ -183,7 +183,7 @@ func TestHandleA2APOSTSuccess(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPost, "/a2a/"+validPeerId, strings.NewReader(requestBody))
 	w := httptest.NewRecorder()
 
@@ -231,7 +231,7 @@ func TestHandleA2AGETSuccess(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodGet, "/a2a/"+validPeerId, nil)
 	w := httptest.NewRecorder()
 
@@ -274,7 +274,7 @@ func TestHandleA2APOSTEnvelopeContainsRequestBody(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleA2A(7000, nil)
+	handler := HandleA2A(nil)
 	req := httptest.NewRequest(http.MethodPost, "/a2a/"+validPeerId, strings.NewReader(requestBody))
 	w := httptest.NewRecorder()
 

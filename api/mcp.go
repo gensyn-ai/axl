@@ -21,8 +21,8 @@ var (
 	mcpSessionMutex sync.RWMutex
 )
 
-var mcpDial = func(netStack *stack.Stack, tcpPort int, peerId string) (net.Conn, error) {
-	return dial.DialPeerConnection(netStack, tcpPort, peerId, 30*time.Second)
+var mcpDial = func(netStack *stack.Stack, peerId string) (net.Conn, error) {
+	return dial.DialPeerConnection(netStack, peerId, 30*time.Second)
 }
 
 // MCPMessage wraps an MCP request with routing info
@@ -41,7 +41,7 @@ type MCPResponse struct {
 // handleMCP implements the MCP Streamable HTTP transport.
 // URL format: /mcp/{peer_id}/{service}
 // Claude Code connects here as a remote MCP server via HTTP transport.
-func HandleMCP(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
+func HandleMCP(netStack *stack.Stack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse path: /mcp/{peer_id}/{service}
 		path := strings.TrimPrefix(r.URL.Path, "/mcp/")
@@ -55,7 +55,7 @@ func HandleMCP(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 
 		switch r.Method {
 		case "POST":
-			handleMCPPost(w, r, service, peerId, TCPPort, netStack)
+			handleMCPPost(w, r, service, peerId, netStack)
 		case "DELETE":
 			// Session termination
 			sessionID := r.Header.Get("Mcp-Session-Id")
@@ -76,7 +76,6 @@ func handleMCPPost(
 	r *http.Request,
 	service string,
 	peerId string,
-	TCPPort int,
 	netStack *stack.Stack,
 ) {
 	// Read the JSON-RPC request body
@@ -131,7 +130,7 @@ func handleMCPPost(
 		http.Error(w, fmt.Sprintf("Failed to marshal MCP envelope: %v", err), http.StatusInternalServerError)
 		return
 	}
-	conn, err := mcpDial(netStack, TCPPort, peerId)
+	conn, err := mcpDial(netStack, peerId)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 		return

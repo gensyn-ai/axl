@@ -14,8 +14,8 @@ import (
 	"github.com/gensyn-ai/axl/internal/tcp/dial"
 )
 
-var a2aDial = func(netStack *stack.Stack, tcpPort int, peerId string) (net.Conn, error) {
-	return dial.DialPeerConnection(netStack, tcpPort, peerId, 30*time.Second)
+var a2aDial = func(netStack *stack.Stack, peerId string) (net.Conn, error) {
+	return dial.DialPeerConnection(netStack, peerId, 30*time.Second)
 }
 
 // A2AMessage is the envelope for A2A requests over Yggdrasil TCP
@@ -36,7 +36,7 @@ type A2AResponse struct {
 // URL format: /a2a/{peer_id}
 // POST: forwards a JSON-RPC request to the remote peer's A2A server.
 // GET:  fetches the remote peer's agent card (/.well-known/agent-card.json) for discovery.
-func HandleA2A(tcpPort int, netStack *stack.Stack) http.HandlerFunc {
+func HandleA2A(netStack *stack.Stack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse path: /a2a/{peer_id}
 		peerId := strings.TrimPrefix(r.URL.Path, "/a2a/")
@@ -69,7 +69,7 @@ func HandleA2A(tcpPort int, netStack *stack.Stack) http.HandlerFunc {
 		}
 
 		// Dial the remote peer
-		conn, err := a2aDial(netStack, tcpPort, peerId)
+		conn, err := a2aDial(netStack, peerId)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to reach peer: %v", err), http.StatusBadGateway)
 			return

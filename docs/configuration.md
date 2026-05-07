@@ -49,7 +49,6 @@ The config file is shared between Yggdrasil's own settings and the node's API/tr
 |-------|---------|-------------|
 | `api_port` | `9002` | HTTP API listen port |
 | `bridge_addr` | `127.0.0.1` | HTTP API bind address |
-| `tcp_port` | `7000` | Internal TCP listener port (gVisor) |
 | `router_addr` | _(empty)_ | MCP Router host (e.g. `http://127.0.0.1`). Empty = disabled. |
 | `router_port` | `9003` | MCP Router port |
 | `a2a_addr` | _(empty)_ | A2A Server host (e.g. `http://127.0.0.1`). Empty = disabled. |

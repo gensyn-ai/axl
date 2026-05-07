@@ -17,8 +17,8 @@ type peerConn interface {
 	io.Closer
 }
 
-var dialPeerConnection = func(netStack *stack.Stack, tcpPort int, peerId string) (peerConn, error) {
-	return dial.DialPeerConnection(netStack, tcpPort, peerId, 0*time.Second)
+var dialPeerConnection = func(netStack *stack.Stack, peerId string) (peerConn, error) {
+	return dial.DialPeerConnection(netStack, peerId, 0*time.Second)
 }
 
 // SendRequest is what Python sends to /send
@@ -27,7 +27,7 @@ type SendRequest struct {
 	Data              []byte `json:"data"`
 }
 
-func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
+func HandleSend(netStack *stack.Stack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -48,7 +48,7 @@ func HandleSend(TCPPort int, netStack *stack.Stack) http.HandlerFunc {
 			return
 		}
 
-		conn, err := dialPeerConnection(netStack, TCPPort, destPeerId)
+		conn, err := dialPeerConnection(netStack, destPeerId)
 		if err != nil {
 			switch {
 			case errors.Is(err, dial.ErrInvalidPeerId):

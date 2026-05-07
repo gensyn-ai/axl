@@ -11,6 +11,7 @@ import (
 	"github.com/gensyn-ai/axl/api"
 	"github.com/gensyn-ai/axl/internal/a2a"
 	"github.com/gensyn-ai/axl/internal/mcp"
+	axltcp "github.com/gensyn-ai/axl/internal/tcp"
 
 	"github.com/gologme/log"
 	"github.com/yggdrasil-network/yggdrasil-go/src/address"
@@ -40,7 +41,7 @@ var (
 	connSem chan struct{}
 )
 
-func SetupNetworkStack(yggCore *core.Core, tcpPort int, mcpRouterUrl string, a2aURL string) {
+func SetupNetworkStack(yggCore *core.Core, mcpRouterUrl string, a2aURL string) {
 	// Initialize connection semaphore with configured limit
 	connSem = make(chan struct{}, MaxConcurrentConns)
 
@@ -150,21 +151,21 @@ func SetupNetworkStack(yggCore *core.Core, tcpPort int, mcpRouterUrl string, a2a
 	})
 
 	// Start TCP Listener
-	go startTCPListener(tcpPort, mcpRouterUrl, a2aURL)
+	go startTCPListener(mcpRouterUrl, a2aURL)
 }
 
-func startTCPListener(tcpPort int, mcpRouterUrl string, a2aURL string) {
-	// Listen on [::]:7000
+func startTCPListener(mcpRouterUrl string, a2aURL string) {
+	// Listen on the network-wide overlay port inside this node's gVisor stack.
 	listener, err := gonet.ListenTCP(NetStack, tcpip.FullAddress{
 		NIC:  0,
-		Port: uint16(tcpPort),
+		Port: uint16(axltcp.PeerTCPPort),
 	}, header.IPv6ProtocolNumber)
 
 	if err != nil {
 		log.Fatalf("ListenTCP failed: %v", err)
 	}
 
-	fmt.Printf("TCP Listener started on port %d\n", tcpPort)
+	fmt.Printf("TCP Listener started on port %d\n", axltcp.PeerTCPPort)
 
 	mux := NewMultiplexer()
 	if mcpRouterUrl != "" {

@@ -32,7 +32,7 @@ func run() error {
 	flag.Parse()
 
 	// Load API configuration
-	apiCfg, err := LoadAPIConfig(*configPath)
+	apiCfg, configWarnings, err := LoadAPIConfig(*configPath)
 	if err != nil {
 		return err
 	}
@@ -42,6 +42,10 @@ func run() error {
 	logger.EnableLevel("info")
 	logger.EnableLevel("warn")
 	logger.EnableLevel("error")
+
+	for _, w := range configWarnings {
+		logger.Warnf("%s", w)
+	}
 
 	// Create Yggdrasil configuration
 	cfg := config.GenerateConfig()
@@ -93,8 +97,6 @@ func run() error {
 	logger.Infof("Our Public Key: %s", hex.EncodeToString(yggCore.PublicKey()))
 
 	// Setup Userspace Network Stack (gVisor)
-	tcpPort := apiCfg.TCPPort
-
 	mcpRouterHost := strings.TrimRight(apiCfg.McpRouterAddr, "/")
 	mcpRouterUrl := ""
 	if mcpRouterHost != "" {
@@ -107,10 +109,10 @@ func run() error {
 		a2aUrl = fmt.Sprintf("%s:%d", apiCfg.A2AAddr, apiCfg.A2APort)
 		logger.Infof("A2A Server URL: %s", a2aUrl)
 	}
-	listen.SetupNetworkStack(yggCore, tcpPort, mcpRouterUrl, a2aUrl)
+	listen.SetupNetworkStack(yggCore, mcpRouterUrl, a2aUrl)
 
 	// Create HTTP Bridge
-	handler := api.NewHandler(yggCore, tcpPort, listen.NetStack)
+	handler := api.NewHandler(yggCore, listen.NetStack)
 	listenAddrStr := fmt.Sprintf("%s:%d", apiCfg.BridgeAddr, apiCfg.ApiPort)
 	fmt.Println("Listening on", listenAddrStr)
 	if err := http.ListenAndServe(listenAddrStr, handler); err != nil {

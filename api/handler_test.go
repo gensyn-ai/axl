@@ -10,7 +10,7 @@ import (
 func TestNewHandlerRouting(t *testing.T) {
 	// Create handler with nil dependencies (we're just testing routing, not full functionality)
 	// Note: topology route requires real yggCore so we skip it here
-	handler := NewHandler(nil, 7000, nil)
+	handler := NewHandler(nil, nil)
 
 	tests := []struct {
 		name           string
@@ -85,7 +85,7 @@ func TestNewHandlerRouting(t *testing.T) {
 
 func TestNewHandlerMCPRouting(t *testing.T) {
 	resetMCPSessions(t)
-	handler := NewHandler(nil, 7000, nil)
+	handler := NewHandler(nil, nil)
 
 	// Test that MCP routes are properly registered with path prefix matching
 	tests := []struct {
@@ -126,7 +126,7 @@ func TestNewHandlerMCPRouting(t *testing.T) {
 func TestNewHandlerRecvIntegration(t *testing.T) {
 	t.Cleanup(func() { DefaultRecvQueue.Reset() })
 
-	handler := NewHandler(nil, 7000, nil)
+	handler := NewHandler(nil, nil)
 
 	DefaultRecvQueue.Reset()
 	DefaultRecvQueue.Push(ReceivedMessage{
