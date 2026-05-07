@@ -17,7 +17,7 @@ import (
 
 func TestDialPeerConnectionInvalidHex(t *testing.T) {
 	// Invalid hex characters - should fail before attempting dial
-	_, err := DialPeerConnection(nil, 7000, "not-valid-hex!", 30*time.Second)
+	_, err := DialPeerConnection(nil, "not-valid-hex!", 30*time.Second)
 	if err == nil {
 		t.Fatal("expected error for invalid hex")
 	}
@@ -29,7 +29,7 @@ func TestDialPeerConnectionInvalidHex(t *testing.T) {
 func TestDialPeerConnectionKeyTooShort(t *testing.T) {
 	// Valid hex but only 16 bytes (should be 32)
 	shortKey := strings.Repeat("ab", 16)
-	_, err := DialPeerConnection(nil, 7000, shortKey, 30*time.Second)
+	_, err := DialPeerConnection(nil, shortKey, 30*time.Second)
 	if err == nil {
 		t.Fatal("expected error for short key")
 	}
@@ -41,7 +41,7 @@ func TestDialPeerConnectionKeyTooShort(t *testing.T) {
 func TestDialPeerConnectionKeyTooLong(t *testing.T) {
 	// Valid hex but 64 bytes (should be 32)
 	longKey := strings.Repeat("ab", 64)
-	_, err := DialPeerConnection(nil, 7000, longKey, 30*time.Second)
+	_, err := DialPeerConnection(nil, longKey, 30*time.Second)
 	if err == nil {
 		t.Fatal("expected error for long key")
 	}
@@ -51,7 +51,7 @@ func TestDialPeerConnectionKeyTooLong(t *testing.T) {
 }
 
 func TestDialPeerConnectionEmptyKey(t *testing.T) {
-	_, err := DialPeerConnection(nil, 7000, "", 30*time.Second)
+	_, err := DialPeerConnection(nil, "", 30*time.Second)
 	if err == nil {
 		t.Fatal("expected error for empty key")
 	}
@@ -63,7 +63,7 @@ func TestDialPeerConnectionEmptyKey(t *testing.T) {
 func TestDialPeerConnectionOddLengthHex(t *testing.T) {
 	// Odd number of hex characters is invalid
 	oddKey := strings.Repeat("a", 63) // 63 chars = invalid hex
-	_, err := DialPeerConnection(nil, 7000, oddKey, 30*time.Second)
+	_, err := DialPeerConnection(nil, oddKey, 30*time.Second)
 	if err == nil {
 		t.Fatal("expected error for odd-length hex")
 	}
@@ -100,7 +100,7 @@ func TestDialPeerConnectionInvalidHexPatterns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := DialPeerConnection(nil, 7000, tt.key, 30*time.Second)
+			_, err := DialPeerConnection(nil, tt.key, 30*time.Second)
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -129,7 +129,7 @@ func TestDialPeerConnectionKeyLengthBoundaries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			key := strings.Repeat("ab", tt.byteCount)
-			_, err := DialPeerConnection(nil, 7000, key, 30*time.Second)
+			_, err := DialPeerConnection(nil, key, 30*time.Second)
 
 			if err == nil {
 				t.Fatal("expected error")
@@ -155,7 +155,7 @@ func TestDialPeerConnectionDialError(t *testing.T) {
 	})
 
 	validKey := strings.Repeat("ab", 32)
-	_, err := DialPeerConnection(nil, 7000, validKey, 30*time.Second)
+	_, err := DialPeerConnection(nil, validKey, 30*time.Second)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -174,7 +174,7 @@ func TestDialPeerConnectionSuccess(t *testing.T) {
 	})
 
 	validKey := strings.Repeat("ab", 32)
-	conn, err := DialPeerConnection(nil, 7000, validKey, 5*time.Second)
+	conn, err := DialPeerConnection(nil, validKey, 5*time.Second)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -183,4 +183,3 @@ func TestDialPeerConnectionSuccess(t *testing.T) {
 	}
 	conn.Close()
 }
-

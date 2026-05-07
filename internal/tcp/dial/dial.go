@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/gensyn-ai/axl/internal/tcp"
 	"github.com/yggdrasil-network/yggdrasil-go/src/address"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
@@ -23,7 +24,7 @@ var dialTCP = func(netStack *stack.Stack, addr tcpip.FullAddress) (net.Conn, err
 	return gonet.DialTCP(netStack, addr, header.IPv6ProtocolNumber)
 }
 
-func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerId string, timeout time.Duration) (net.Conn, error) {
+func DialPeerConnection(netStack *stack.Stack, peerId string, timeout time.Duration) (net.Conn, error) {
 
 	peerIdBytes, err := hex.DecodeString(peerId)
 	if err != nil || len(peerIdBytes) != 32 {
@@ -37,7 +38,7 @@ func DialPeerConnection(netStack *stack.Stack, tcpPort int, peerId string, timeo
 	conn, err := dialTCP(netStack, tcpip.FullAddress{
 		NIC:  0,
 		Addr: destIP,
-		Port: uint16(tcpPort),
+		Port: uint16(tcp.PeerTCPPort),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDialPeer, err)

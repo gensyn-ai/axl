@@ -8,7 +8,6 @@ import (
 )
 
 const (
-	defaultTCPPort        = 7000
 	defaultAPIPort        = 9002
 	defaultMcpRouterPort  = 9003
 	defaultA2APort        = 9004
@@ -24,7 +23,6 @@ const (
 
 // ApiConfig holds the HTTP API and TCP configuration for the node.
 type ApiConfig struct {
-	TCPPort         int    `json:"tcp_port"`
 	ApiPort         int    `json:"api_port"`
 	McpRouterPort   int    `json:"router_port"`
 	A2APort         int    `json:"a2a_port"`
@@ -40,7 +38,6 @@ type ApiConfig struct {
 // DefaultAPIConfig returns a new ApiConfig with default values.
 func DefaultAPIConfig() ApiConfig {
 	return ApiConfig{
-		TCPPort:         defaultTCPPort,
 		ApiPort:         defaultAPIPort,
 		McpRouterPort:   defaultMcpRouterPort,
 		A2APort:         defaultA2APort,
@@ -75,9 +72,6 @@ func LoadAPIConfig(configPath string) (ApiConfig, error) {
 }
 
 func applyOverrides(base *ApiConfig, ov ApiConfig) {
-	if ov.TCPPort != 0 {
-		base.TCPPort = ov.TCPPort
-	}
 	if ov.ApiPort != 0 {
 		base.ApiPort = ov.ApiPort
 	}

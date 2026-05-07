@@ -32,14 +32,14 @@ func resetMCPDial(t *testing.T) {
 func setMCPDialer(t *testing.T, conn net.Conn, err error) {
 	t.Helper()
 	resetMCPDial(t)
-	mcpDial = func(_ *stack.Stack, _ int, _ string) (net.Conn, error) {
+	mcpDial = func(_ *stack.Stack, _ string) (net.Conn, error) {
 		return conn, err
 	}
 }
 
 func TestHandleMCPInvalidPath(t *testing.T) {
 	resetMCPSessions(t)
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/mcp/weather", strings.NewReader("{}"))
 	w := httptest.NewRecorder()
@@ -53,7 +53,7 @@ func TestHandleMCPInvalidPath(t *testing.T) {
 
 func TestHandleMCPMethodNotAllowed(t *testing.T) {
 	resetMCPSessions(t)
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/mcp/"+validPeerId+"/weather", nil)
 	w := httptest.NewRecorder()
@@ -67,7 +67,7 @@ func TestHandleMCPMethodNotAllowed(t *testing.T) {
 
 func TestHandleMCPInvalidJSON(t *testing.T) {
 	resetMCPSessions(t)
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", strings.NewReader("not-json"))
 	w := httptest.NewRecorder()
@@ -81,7 +81,7 @@ func TestHandleMCPInvalidJSON(t *testing.T) {
 
 func TestHandleMCPNotificationsInitialized(t *testing.T) {
 	resetMCPSessions(t)
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 
 	body := strings.NewReader(`{"method":"notifications/initialized"}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
@@ -96,7 +96,7 @@ func TestHandleMCPNotificationsInitialized(t *testing.T) {
 
 func TestHandleMCPInvalidSession(t *testing.T) {
 	resetMCPSessions(t)
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 
 	body := strings.NewReader(`{"method":"call","id":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
@@ -112,7 +112,7 @@ func TestHandleMCPInvalidSession(t *testing.T) {
 
 func TestHandleMCPDialFailure(t *testing.T) {
 	resetMCPSessions(t)
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 
 	body := strings.NewReader(`{"method":"initialize","id":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+invalidHexPeerId+"/weather", body)
@@ -129,7 +129,7 @@ func TestHandleMCPDialFailureOnInitialize(t *testing.T) {
 	resetMCPSessions(t)
 	setMCPDialer(t, nil, &net.OpError{Op: "dial", Err: net.UnknownNetworkError("unreachable")})
 
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 	body := strings.NewReader(`{"method":"initialize","id":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
 	w := httptest.NewRecorder()
@@ -149,7 +149,7 @@ func TestHandleMCPWriteError(t *testing.T) {
 	peerSide.Close()
 	setMCPDialer(t, handlerSide, nil)
 
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 	body := strings.NewReader(`{"method":"initialize","id":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
 	w := httptest.NewRecorder()
@@ -173,7 +173,7 @@ func TestHandleMCPReadError(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 	body := strings.NewReader(`{"method":"initialize","id":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
 	w := httptest.NewRecorder()
@@ -197,7 +197,7 @@ func TestHandleMCPInvalidResponseFromPeer(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 	body := strings.NewReader(`{"method":"initialize","id":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
 	w := httptest.NewRecorder()
@@ -223,7 +223,7 @@ func TestHandleMCPErrorResponseFromPeer(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 	body := strings.NewReader(`{"method":"initialize","id":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
 	w := httptest.NewRecorder()
@@ -268,7 +268,7 @@ func TestHandleMCPInitializeSuccess(t *testing.T) {
 		peerSide.Close()
 	}()
 
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 	body := strings.NewReader(`{"method":"initialize","id":1}`)
 	req := httptest.NewRequest(http.MethodPost, "/mcp/"+validPeerId+"/weather", body)
 	w := httptest.NewRecorder()
@@ -306,7 +306,7 @@ func TestHandleMCPDeleteSession(t *testing.T) {
 	mcpSessions[sessionID] = true
 	mcpSessionMutex.Unlock()
 
-	handler := HandleMCP(7000, nil)
+	handler := HandleMCP(nil)
 	req := httptest.NewRequest(http.MethodDelete, "/mcp/"+validPeerId+"/weather", nil)
 	req.Header.Set("Mcp-Session-Id", sessionID)
 	w := httptest.NewRecorder()

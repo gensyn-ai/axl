@@ -49,7 +49,7 @@ func setDialer(t *testing.T, conn peerConn, err error) *stubConn {
 	t.Helper()
 	resetDialer(t)
 	stub := conn
-	dialPeerConnection = func(_ *stack.Stack, _ int, _ string) (peerConn, error) {
+	dialPeerConnection = func(_ *stack.Stack, _ string) (peerConn, error) {
 		return stub, err
 	}
 	if c, ok := conn.(*stubConn); ok {
@@ -63,7 +63,7 @@ func validKeyHex() string {
 }
 
 func TestHandleSendMethodNotAllowed(t *testing.T) {
-	handler := HandleSend(7000, nil)
+	handler := HandleSend(nil)
 	req := httptest.NewRequest(http.MethodGet, "/send", nil)
 	w := httptest.NewRecorder()
 
@@ -75,7 +75,7 @@ func TestHandleSendMethodNotAllowed(t *testing.T) {
 }
 
 func TestHandleSendMissingDestinationHeader(t *testing.T) {
-	handler := HandleSend(7000, nil)
+	handler := HandleSend(nil)
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader("hello"))
 	w := httptest.NewRecorder()
 
@@ -87,7 +87,7 @@ func TestHandleSendMissingDestinationHeader(t *testing.T) {
 }
 
 func TestHandleSendInvalidDestinationHex(t *testing.T) {
-	handler := HandleSend(7000, nil)
+	handler := HandleSend(nil)
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader("hello"))
 	req.Header.Set("X-Destination-Peer-Id", "zzzz")
 	w := httptest.NewRecorder()
@@ -100,7 +100,7 @@ func TestHandleSendInvalidDestinationHex(t *testing.T) {
 }
 
 func TestHandleSendInvalidKeyLength(t *testing.T) {
-	handler := HandleSend(7000, nil)
+	handler := HandleSend(nil)
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader("hello"))
 	req.Header.Set("X-Destination-Peer-Id", "abcd")
 	w := httptest.NewRecorder()
@@ -119,7 +119,7 @@ func (f failingReader) Read(_ []byte) (int, error) {
 }
 
 func TestHandleSendBodyReadError(t *testing.T) {
-	handler := HandleSend(7000, nil)
+	handler := HandleSend(nil)
 	req := httptest.NewRequest(http.MethodPost, "/send", failingReader{})
 	req.Header.Set("X-Destination-Peer-Id", validKeyHex())
 	w := httptest.NewRecorder()
@@ -132,7 +132,7 @@ func TestHandleSendBodyReadError(t *testing.T) {
 }
 
 func TestHandleSendDialError(t *testing.T) {
-	handler := HandleSend(7000, nil)
+	handler := HandleSend(nil)
 	setDialer(t, nil, errors.New("dial failed"))
 
 	req := httptest.NewRequest(http.MethodPost, "/send", strings.NewReader("hello"))
@@ -147,7 +147,7 @@ func TestHandleSendDialError(t *testing.T) {
 }
 
 func TestHandleSendWriteLengthError(t *testing.T) {
-	handler := HandleSend(7000, nil)
+	handler := HandleSend(nil)
 	conn := &stubConn{writeErrs: []error{errors.New("len write failed")}}
 	setDialer(t, conn, nil)
 
@@ -163,7 +163,7 @@ func TestHandleSendWriteLengthError(t *testing.T) {
 }
 
 func TestHandleSendWriteDataError(t *testing.T) {
-	handler := HandleSend(7000, nil)
+	handler := HandleSend(nil)
 	conn := &stubConn{writeErrs: []error{nil, errors.New("data write failed")}}
 	setDialer(t, conn, nil)
 
@@ -179,7 +179,7 @@ func TestHandleSendWriteDataError(t *testing.T) {
 }
 
 func TestHandleSendSuccess(t *testing.T) {
-	handler := HandleSend(7000, nil)
+	handler := HandleSend(nil)
 	conn := &stubConn{}
 	setDialer(t, conn, nil)
 
