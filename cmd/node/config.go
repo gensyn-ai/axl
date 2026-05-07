@@ -74,7 +74,7 @@ func LoadAPIConfig(configPath string) (ApiConfig, []string, error) {
 }
 
 // deprecationWarnings reports any deprecated config keys present in the raw
-// JSON. Used to give users a one-line heads-up when they upgrade past a
+// JSON. Used to give users a heads-up when they upgrade past a
 // removed setting that would otherwise silently be ignored.
 func deprecationWarnings(configBytes []byte) []string {
 	var raw map[string]json.RawMessage
