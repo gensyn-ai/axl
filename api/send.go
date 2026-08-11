@@ -21,12 +21,6 @@ var dialPeerConnection = func(netStack *stack.Stack, peerId string) (peerConn, e
 	return dial.DialPeerConnection(netStack, peerId, 0*time.Second)
 }
 
-// SendRequest is what Python sends to /send
-type SendRequest struct {
-	DestinationPeerId string `json:"destination_peer_id"` // Hex-encoded peer ID
-	Data              []byte `json:"data"`
-}
-
 func HandleSend(netStack *stack.Stack) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
