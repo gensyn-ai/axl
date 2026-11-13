@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-gcloud auth print-access-token --impersonate-service-account=buildkite-agent@gensyn-ci-live-25e0.iam.gserviceaccount.com --lifetime=6h | podman login -u oauth2accesstoken --password-stdin europe-docker.pkg.dev
+gcloud auth print-access-token --impersonate-service-account=buildkite-agent@gensyn-ci-live-25e0.iam.gserviceaccount.com --lifetime=6h | podman login -u oauth2accesstoken --password-stdin us-docker.pkg.dev
 
 
 # Use the Daemon-ful Buildkit Image to run our builds.

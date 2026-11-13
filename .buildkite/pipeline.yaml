@@ -6,9 +6,9 @@ steps:
       queue: default
     command: |
       .buildkite/tools/build-oci-image.sh \
-        --output type=image,push=true,"name=europe-docker.pkg.dev/gensyn-main/registry/yggdrasil-node:main,europe-docker.pkg.dev/gensyn-main/registry/yggdrasil-node:$$BUILDKITE_COMMIT" \
+        --output type=image,push=true,"name=us-docker.pkg.dev/gensyn-main/registry-us/yggdrasil-node:main,us-docker.pkg.dev/gensyn-main/registry-us/yggdrasil-node:$$BUILDKITE_COMMIT" \
         --local dockerfile=/workdir \
         --local context=/workdir \
         --opt filename=./containerfiles/Dockerfile \
-        --export-cache type=registry,ref=europe-docker.pkg.dev/gensyn-main/registry/yggdrasil-node:cache-main,image-manifest=true,mode=max \
-        --import-cache type=registry,ref=europe-docker.pkg.dev/gensyn-main/registry/yggdrasil-node:cache-main
+        --export-cache type=registry,ref=us-docker.pkg.dev/gensyn-main/registry-us/yggdrasil-node:cache-main,image-manifest=true,mode=max \
+        --import-cache type=registry,ref=us-docker.pkg.dev/gensyn-main/registry-us/yggdrasil-node:cache-main
